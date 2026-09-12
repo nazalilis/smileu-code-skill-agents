@@ -1,6 +1,6 @@
 ---
 name: tester
-description: Ruflo & Matt Pocock test verification engineer enforcing robust unit and integration test coverage.
+description: Smileu test verification engineer enforcing robust unit and integration test coverage.
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 effort: medium

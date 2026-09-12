@@ -23,7 +23,7 @@ export function printBanner() {
   console.log(pc.cyan(pc.bold('  ███████║██║ ╚═╝ ██║██║███████╗███████╗╚██████╔╝')));
   console.log(pc.cyan(pc.bold('  ╚══════╝╚═╝     ╚═╝╚═╝╚══════╝╚══════╝ ╚═════╝ ')));
   console.log(pc.magenta(pc.bold('         C O D E   S K I L L   E C O S Y S T E M')));
-  console.log(pc.dim('     Unified Vibe Coding Skills & Multi-Agent Framework\n'));
+  console.log(pc.dim('     One command. Every AI agent & skill. Under one brand.\n'));
 }
 
 export function logSuccess(msg) {

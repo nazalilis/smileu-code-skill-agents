@@ -78,43 +78,43 @@ export const SKILLS_CATALOG = [
   },
   {
     id: 'engineering-alignment',
-    name: 'Engineering Alignment (Matt Pocock)',
+    name: 'Engineering Alignment',
     dir: 'engineering-alignment',
     description: 'Grilling sessions, domain dictionary (CONTEXT.md), and ADR documentation.'
   },
   {
     id: 'codebase-knowledge-graph',
-    name: 'Codebase Knowledge Graph (Graphify)',
+    name: 'Codebase Knowledge Graph',
     dir: 'codebase-knowledge-graph',
     description: 'Architecture topology, god node detection, and GraphRAG.'
   },
   {
     id: 'frontend-taste',
-    name: 'Frontend Taste (Taste Skill)',
+    name: 'Frontend Taste',
     dir: 'frontend-taste',
     description: 'Anti-slop aesthetics, typography scales, and color discipline.'
   },
   {
     id: 'design-craft-impeccable',
-    name: 'Design Craft (Impeccable)',
+    name: 'Design Craft',
     dir: 'design-craft-impeccable',
     description: '23 design craft commands, PRODUCT.md, and DESIGN.md.'
   },
   {
     id: 'motion-physics',
-    name: 'UI Motion Physics (Emil Kowalski)',
+    name: 'UI Motion Physics',
     dir: 'motion-physics',
     description: 'Spring physics, easing curves, and micro-interaction timing.'
   },
   {
     id: 'agent-orchestration',
-    name: 'Agent Orchestration (Ruflo)',
+    name: 'Agent Orchestration',
     dir: 'agent-orchestration',
     description: 'Multi-agent swarms, SPARC workflow, and task decomposition.'
   },
   {
     id: 'humanizer-writing',
-    name: 'Humanizer Writing (Humanizer)',
+    name: 'Humanizer Writing',
     dir: 'humanizer-writing',
     description: 'Removes 25 AI clichés and robotic writing patterns.'
   },

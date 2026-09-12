@@ -1,7 +1,7 @@
 {
   "name": "@nazalilis/smileu-code-skill",
   "version": "1.0.4",
-  "description": "Unified Vibe Coding Skills & Multi-Agent Framework synthesized from the best engineering, design, and security practices. Runnable via npx.",
+  "description": "Smileu Code Skill - one npx command to install a unified suite of AI agents and skills (engineering, design, motion, security) into Cursor, Claude Code, Antigravity, and Windsurf.",
   "type": "module",
   "main": "src/index.js",
   "bin": {
@@ -30,20 +30,20 @@
     "release:major": "node scripts/release.js major"
   },
   "keywords": [
+    "smileu",
+    "smileu-code-skill",
     "vibe-coding",
     "ai-agent",
+    "ai-agents",
     "skills",
     "claude-code",
     "cursor",
     "antigravity",
+    "windsurf",
     "design-taste",
-    "cybersecurity",
-    "graphify",
-    "impeccable",
-    "humanizer",
-    "ruflo"
+    "cybersecurity"
   ],
-  "author": "Smileu Team",
+  "author": "Smileu Code Skill",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"

@@ -320,6 +320,7 @@ function printInstallSummary(result, dryRun) {
   console.log('     - npx smileu-code-skill graph      (knowledge graph)');
   console.log('     - npx smileu-code-skill audit      (OWASP security audit)');
   console.log('     - npx smileu-code-skill run-all    (full 6-phase pipeline)\n');
+  console.log('Powered by Smileu Code Skill - your unified AI agent & skill suite.\n');
 }
 
 function printHelp() {
@@ -334,9 +335,9 @@ Install commands:
 Workflow commands:
   run-all / pipeline   Execute the complete 6-Phase Pipeline end-to-end
   grill / align        Interactive grilling session (writes PRODUCT.md / CONTEXT.md)
-  graph                Generate the codebase knowledge graph (Graphify)
-  swarm "<task>"       Decompose a task across specialized agent personas (Ruflo)
-  motion [preset]      Print physics-based UI motion curves (Emil Kowalski)
+  graph                Generate the codebase knowledge graph
+  swarm "<task>"       Decompose a task across specialized agent personas
+  motion [preset]      Print physics-based UI motion curves
   audit / secure       Run the cybersecurity & OWASP Top 10 audit
   craft / polish       Run the anti-slop design & motion audit
   humanize             Scan docs for AI cliches and robot phrasing
@@ -388,14 +389,15 @@ function printList() {
   console.log('----------------------------------------------------');
   console.log(`Total installable skills in the bundled library: ${totalSkills}`);
   console.log('Categories:');
-  console.log('  - Anthropic Cybersecurity Skills (OWASP, AD, Cloud, Network, IR)');
-  console.log('  - Matt Pocock Engineering (alignment, domain modeling, ADR, TDD)');
-  console.log('  - Blader Humanizer prose, Emil Kowalski motion physics');
-  console.log('  - Leonxlnx Taste, Impeccable design craft, Graphify, Ruflo swarms\n');
+  console.log('  - Security & hardening (OWASP, Active Directory, cloud, network, IR)');
+  console.log('  - Engineering discipline (alignment, domain modeling, ADR, TDD)');
+  console.log('  - Prose humanization & UI motion physics');
+  console.log('  - Design taste & craft, knowledge graphs, and agent swarms\n');
   console.log('Install:');
   console.log('  - Full library (default) : npx smileu-code-skill init');
   console.log('  - Core suite only        : npx smileu-code-skill init --core');
   console.log('  - A single skill         : npx smileu-code-skill add <skill-name>\n');
+  console.log('Run `npx smileu-code-skill repos` to see the frameworks Smileu credits.\n');
 }
 
 function printRepos() {
