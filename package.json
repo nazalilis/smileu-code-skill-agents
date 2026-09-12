@@ -1,0 +1,71 @@
+{
+  "name": "@nazalilis/smileu-code-skill",
+  "version": "1.0.4",
+  "description": "Unified Vibe Coding Skills & Multi-Agent Framework synthesized from the best engineering, design, and security practices. Runnable via npx.",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "smileu": "./bin/cli.js",
+    "smileu-code-skill": "./bin/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nazalilis/smileu-code-skill-agents.git"
+  },
+  "homepage": "https://github.com/nazalilis/smileu-code-skill-agents#readme",
+  "bugs": {
+    "url": "https://github.com/nazalilis/smileu-code-skill-agents/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "scripts": {
+    "start": "node bin/cli.js",
+    "test": "node --test test/cli.test.js test/sandboxes.test.js",
+    "test:unit": "node --test test/cli.test.js",
+    "test:sandboxes": "node --test test/sandboxes.test.js",
+    "release": "node scripts/release.js patch",
+    "release:minor": "node scripts/release.js minor",
+    "release:major": "node scripts/release.js major"
+  },
+  "keywords": [
+    "vibe-coding",
+    "ai-agent",
+    "skills",
+    "claude-code",
+    "cursor",
+    "antigravity",
+    "design-taste",
+    "cybersecurity",
+    "graphify",
+    "impeccable",
+    "humanizer",
+    "ruflo"
+  ],
+  "author": "Smileu Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "picocolors": "^1.1.1",
+    "prompts": "^2.4.2"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "templates",
+    "docs",
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "SECURITY.md",
+    "PRODUCT.md",
+    "CONTEXT.md",
+    "DESIGN.md",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ]
+}
