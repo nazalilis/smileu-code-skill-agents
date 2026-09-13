@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.2.0] - 2026-09-13
+
 ### Added
 - **`/smileu <phase>` in every supported editor.** The new `smileu` skill, installed with
   every install, runs a phase (`align`, `graph`, `swarm`, `craft`, `polish`, `secure`,
