@@ -1,80 +1,301 @@
 name: Release & Publish Package
 
+# Three ways to release, all ending in the same GitHub Release + package publish:
+#
+# 1. Automatic: push a commit to main that changes the version in package.json.
+#    If no tag exists for that version yet, it is tagged, released and published.
+# 2. Chosen: Actions -> "Release & Publish Package" -> Run workflow, then pick a
+#    release type (patch, minor, major, pre*) or type an explicit version. The
+#    workflow bumps package.json, stamps CHANGELOG.md, commits, tags, releases
+#    and publishes in one run.
+# 3. Classic: push a vX.Y.Z tag yourself (for example from scripts/release.js).
+#
+# Re-running any of them is safe: an existing GitHub Release is updated in place,
+# and a version that is already on the registry is skipped instead of failing.
+
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches: [main]
+    tags: ['v*.*.*']
+    # Path filters apply to branch pushes only; tag pushes always run.
+    paths: [package.json]
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version tag to release (e.g. v1.0.1)'
+      release_type:
+        description: 'Release type. "auto" releases the version already in package.json.'
+        type: choice
         required: true
-        default: 'v1.0.1'
+        default: auto
+        options: [auto, patch, minor, major, prepatch, preminor, premajor, prerelease]
+      version:
+        description: 'Explicit version (e.g. 2.0.0). Overrides the release type when set.'
+        type: string
+        required: false
+        default: ''
+      preid:
+        description: 'Prerelease channel for pre* types (beta, rc, next).'
+        type: string
+        required: false
+        default: beta
+      dry_run:
+        description: 'Plan and test only. Nothing is committed, tagged or published.'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  build-and-test:
+  plan:
+    name: Plan release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      should_release: ${{ steps.plan.outputs.should_release }}
+      needs_bump: ${{ steps.plan.outputs.needs_bump }}
+      needs_tag: ${{ steps.plan.outputs.needs_tag }}
+      bump_target: ${{ steps.plan.outputs.bump_target }}
     steps:
-      - name: Checkout Source Code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js Runtime
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: 'https://registry.npmjs.org'
 
-      - name: Install Dependencies
-        run: npm ci || npm install
+      - name: Decide what to release
+        id: plan
+        env:
+          # Inputs go through the environment, never straight into the script,
+          # so a crafted input value cannot inject shell commands.
+          INPUT_TYPE: ${{ inputs.release_type || 'auto' }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PREID: ${{ inputs.preid || 'beta' }}
+        run: |
+          set -euo pipefail
 
-      - name: Run Test Suite & Sandboxes
+          CURRENT="$(node -p "require('./package.json').version")"
+          NEEDS_BUMP=false
+          NEEDS_TAG=false
+          SHOULD_RELEASE=true
+          BUMP_TARGET=""
+
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            if [ "$VERSION" != "$CURRENT" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $CURRENT."
+              exit 1
+            fi
+
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && { [ -n "$INPUT_VERSION" ] || [ "$INPUT_TYPE" != "auto" ]; }; then
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::Version bumps run from main only; this run is on $GITHUB_REF."
+              exit 1
+            fi
+            BUMP_TARGET="${INPUT_VERSION:-$INPUT_TYPE}"
+            VERSION="$(node scripts/release.js "$BUMP_TARGET" --preid "$INPUT_PREID" --dry-run --skip-tests --ci | sed -n 's/^version=//p')"
+            if [ -z "$VERSION" ]; then
+              echo "::error::Could not compute the next version from \"$BUMP_TARGET\"."
+              exit 1
+            fi
+            NEEDS_BUMP=true
+
+          else
+            VERSION="$CURRENT"
+            # On a push, release only when this push actually changed the version.
+            # Editing scripts or dependencies in package.json must not publish.
+            PREVIOUS=""
+            if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$BEFORE_SHA" ] && ! [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
+              PREVIOUS="$(git show "$BEFORE_SHA:package.json" 2> /dev/null | node -p "JSON.parse(require('fs').readFileSync(0, 'utf-8')).version" 2> /dev/null || true)"
+            fi
+
+            if git rev-parse -q --verify "refs/tags/v$VERSION" > /dev/null; then
+              SHOULD_RELEASE=false
+              SKIP_REASON="v$VERSION is already tagged."
+            elif [ -n "$PREVIOUS" ] && [ "$PREVIOUS" = "$VERSION" ]; then
+              SHOULD_RELEASE=false
+              SKIP_REASON="package.json changed, but the version is still $VERSION."
+            else
+              NEEDS_TAG=true
+            fi
+          fi
+
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+- ]]; then PRERELEASE=true; else PRERELEASE=false; fi
+
+          {
+            echo "version=$VERSION"
+            echo "tag=v$VERSION"
+            echo "prerelease=$PRERELEASE"
+            echo "should_release=$SHOULD_RELEASE"
+            echo "needs_bump=$NEEDS_BUMP"
+            echo "needs_tag=$NEEDS_TAG"
+            echo "bump_target=$BUMP_TARGET"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Release plan"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Trigger | \`$GITHUB_EVENT_NAME\` on \`$GITHUB_REF_NAME\` |"
+            echo "| Current version | \`$CURRENT\` |"
+            echo "| Release version | \`$VERSION\` |"
+            echo "| Pre-release | $PRERELEASE |"
+            echo "| Will release | $SHOULD_RELEASE |"
+            echo "| Bump commit | $NEEDS_BUMP |"
+            echo "| Create tag | $NEEDS_TAG |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$SHOULD_RELEASE" = "false" ]; then
+            echo "v$VERSION is already tagged. Nothing to release." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+  test:
+    name: Test before release
+    needs: plan
+    if: needs.plan.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
         run: npm test
 
-  create-release:
-    needs: build-and-test
+  release:
+    name: Release ${{ needs.plan.outputs.tag }}
+    needs: [plan, test]
+    if: needs.plan.outputs.should_release == 'true' && inputs.dry_run != true
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
       packages: write
-      id-token: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+      PACKAGE_NAME: '@nazalilis/smileu-code-skill'
+      # Secrets are not available in step-level `if:` expressions. Mapping the
+      # secret into env here is what makes `if: env.NPM_TOKEN != ''` work below.
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # A bump needs a real branch to commit on; everything else releases the
+          # exact commit that triggered the run.
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
 
-      - name: Setup Node.js for GitHub Packages
+      - name: Set up Node.js for GitHub Packages
         uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: 'https://npm.pkg.github.com'
           scope: '@nazalilis'
 
-      - name: Extract Tag Name
-        id: tag
-        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Create GitHub Release
+      - name: Bump version, stamp changelog, commit and tag
+        if: needs.plan.outputs.needs_bump == 'true'
+        env:
+          BUMP_TARGET: ${{ needs.plan.outputs.bump_target }}
+          INPUT_PREID: ${{ inputs.preid || 'beta' }}
+        run: |
+          set -euo pipefail
+          node scripts/release.js "$BUMP_TARGET" --preid "$INPUT_PREID" --skip-tests --ci --push
+          ACTUAL="$(node -p "require('./package.json').version")"
+          if [ "$ACTUAL" != "$VERSION" ]; then
+            echo "::error::Bumped to $ACTUAL but the plan expected $VERSION."
+            exit 1
+          fi
+
+      - name: Tag the released commit
+        if: needs.plan.outputs.needs_tag == 'true'
+        run: |
+          set -euo pipefail
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Prepare release notes
+        id: notes
+        run: |
+          if node scripts/release-notes.js "$VERSION" > RELEASE_NOTES.md; then
+            echo "from_changelog=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "from_changelog=false" >> "$GITHUB_OUTPUT"
+            : > RELEASE_NOTES.md
+          fi
+
+      - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.TAG_NAME }}
-          name: Smileu Code Skill ${{ env.TAG_NAME }}
+          tag_name: ${{ env.TAG }}
+          name: Smileu Code Skill ${{ env.TAG }}
+          body_path: RELEASE_NOTES.md
           draft: false
-          prerelease: false
+          prerelease: ${{ env.PRERELEASE == 'true' }}
+          make_latest: ${{ env.PRERELEASE == 'true' && 'false' || 'true' }}
+          # Commit-level notes are appended to the changelog section, or used on
+          # their own when the changelog has no section for this version.
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to GitHub Packages
-        run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to NPM Registry (Optional)
-        if: ${{ secrets.NPM_TOKEN != '' }}
         run: |
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
-          npm publish --access public --registry https://registry.npmjs.org
+          set -euo pipefail
+          if npm view "$PACKAGE_NAME@$VERSION" version --registry https://npm.pkg.github.com > /dev/null 2>&1; then
+            echo "$PACKAGE_NAME@$VERSION is already on GitHub Packages. Skipping." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          DIST_TAG=latest
+          if [ "$PRERELEASE" = "true" ]; then DIST_TAG=next; fi
+          npm publish --tag "$DIST_TAG"
+          echo "Published $PACKAGE_NAME@$VERSION to GitHub Packages (dist-tag: $DIST_TAG)." | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish to the npm registry (optional)
+        if: env.NPM_TOKEN != ''
         continue-on-error: true
-
-
+        run: |
+          set -euo pipefail
+          NPMJS=https://registry.npmjs.org
+          if npm view "$PACKAGE_NAME@$VERSION" version --registry "$NPMJS" > /dev/null 2>&1; then
+            echo "$PACKAGE_NAME@$VERSION is already on npm. Skipping." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "$NPM_CONFIG_USERCONFIG"
+          # publishConfig and the project .npmrc both pin the scope to GitHub
+          # Packages. Override them for this one publish; the change is never committed.
+          npm pkg delete publishConfig.registry
+          DIST_TAG=latest
+          if [ "$PRERELEASE" = "true" ]; then DIST_TAG=next; fi
+          npm publish --access public --tag "$DIST_TAG" --registry "$NPMJS" "--@nazalilis:registry=$NPMJS"
+          echo "Published $PACKAGE_NAME@$VERSION to npm (dist-tag: $DIST_TAG)." | tee -a "$GITHUB_STEP_SUMMARY"

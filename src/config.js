@@ -9,13 +9,18 @@ export const PACKAGE_ROOT = path.resolve(__dirname, '..');
 // regardless of which subset the user selects.
 export const MASTER_SKILL_ID = 'smileu-code-skill';
 
+// The published package and the GitHub repository it is built from. Releases
+// are read from this repository by `smileu update --check`.
+export const PACKAGE_NAME = '@nazalilis/smileu-code-skill';
+export const GITHUB_REPO = 'nazalilis/smileu-code-skill-agents';
+
 // Reference library used by the `--latest` flag. Skills and agents are pulled
 // from here into an OS temp directory, installed, then the temp clone is removed.
-export const UPSTREAM_REPO = 'https://github.com/nazalilis/smileu-code-skill.git';
+export const UPSTREAM_REPO = `https://github.com/${GITHUB_REPO}.git`;
 
 // Folder where every command writes its generated artifacts (audit reports,
-// knowledge graphs, swarm task plans). Kept out of the project root and added
-// to .gitignore automatically so commands never litter the workspace.
+// knowledge graphs, swarm task plans, the install manifest). Kept out of the
+// project root and added to .gitignore automatically.
 export const OUTPUT_DIR = '.smileu';
 
 export const REPOSITORIES = [
@@ -74,7 +79,7 @@ export const SKILLS_CATALOG = [
     id: 'smileu-code-skill',
     name: 'Smileu Code Skill (Master Skill)',
     dir: 'smileu-code-skill',
-    description: 'The composite super-skill combining all 8 frameworks into a single unified 6-phase pipeline.'
+    description: 'Entry skill for the /smileu workflow. Always installed.'
   },
   {
     id: 'engineering-alignment',
@@ -167,6 +172,8 @@ export const ALL_EDITORS = ['claude', 'cursor', 'antigravity', 'universal'];
 
 export function resolveEditors(editor = 'all') {
   if (editor === 'all') return [...ALL_EDITORS];
-  if (EDITOR_TARGETS[editor]) return [editor];
+  // hasOwnProperty, so names like "constructor" or "__proto__" are rejected
+  // instead of resolving to Object.prototype members.
+  if (Object.prototype.hasOwnProperty.call(EDITOR_TARGETS, editor)) return [editor];
   return null;
 }

@@ -1,17 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { logSuccess, logInfo } from '../ui.js';
+import { logHeading, logInfo, logSuccess } from '../ui.js';
 import { ensureOutputDir } from '../utils/output.js';
 
 /**
- * Decomposes a task across specialized agent swarm personas (Ruflo SPARC).
+ * Splits a task into a checklist for five agent personas, following the SPARC
+ * roles from ruvnet/ruflo, and saves it to .smileu/tasks/. It writes a plan; it
+ * does not run any agents.
  */
-export function runSwarmDecomposition(task = 'Implement feature', targetDir = process.cwd()) {
-  console.log('\n======================================================');
-  console.log('   SMILEU MULTI-AGENT SWARM ORCHESTRATOR');
-  console.log('   Inspired by ruvnet/ruflo (Claude-Flow)');
-  console.log('======================================================\n');
-  logInfo(`Decomposing Task: "${task}"\n`);
+export function runSwarmDecomposition(task, targetDir = process.cwd()) {
+  logHeading(`Task plan: ${task}`);
+  logInfo('Hand each section to the matching agent persona.');
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const plan = {
@@ -21,68 +20,64 @@ export function runSwarmDecomposition(task = 'Implement feature', targetDir = pr
     swarm: [
       {
         role: 'Lead Architect (@architect)',
-        mission: 'Define system interfaces, schema boundaries, and map dependency graph.',
+        mission: 'Define system interfaces, schema boundaries, and the dependency graph.',
         actions: [
-          `Inspect existing graphify-out/graph.json to trace blast radius.`,
+          'Read .smileu/graph/graph.json (run "smileu graph" first) to trace the blast radius.',
           `Draft data contracts and interface types for "${task}".`,
-          `Record non-obvious design choices in docs/adr/ if necessary.`
+          'Record non-obvious design choices in docs/adr/ when needed.'
         ]
       },
       {
         role: 'Feature Engineer (@engineer)',
-        mission: 'Implement atomic logic, API handlers, and pure functions.',
+        mission: 'Implement the logic, API handlers, and pure functions.',
         actions: [
-          `Write modular, strictly typed code satisfying the Architect specification.`,
-          `Implement pure data transformations and robust error pathways.`,
-          `Ensure no unhandled promise rejections or silent failures.`
+          'Write modular, strictly typed code that satisfies the architect specification.',
+          'Implement pure data transformations and explicit error paths.',
+          'Leave no unhandled promise rejections or silent failures.'
         ]
       },
       {
         role: 'Design & Motion Specialist (@craft)',
-        mission: 'Apply anti-slop frontend standards and natural motion physics.',
+        mission: 'Apply the frontend design standards and motion rules.',
         actions: [
-          `Ensure typography follows harmonic scales (Geist, Plus Jakarta Sans, SF Pro).`,
-          `Apply ease-out (200ms) for entering elements and ease-in (150ms) for exiting elements.`,
-          `Prevent nested cards, raw #000000 black, or generic AI purple-gradient tropes.`
+          'Keep typography on a consistent scale.',
+          'Use ease-out (200ms) for entering elements and ease-in (150ms) for exiting elements.',
+          'Avoid nested cards, pure #000000 black, and default purple gradients.'
         ]
       },
       {
         role: 'Security Guardian (@guardian)',
-        mission: 'Enforce OWASP Top 10 defenses and boundary security.',
+        mission: 'Apply OWASP Top 10 defenses at every boundary.',
         actions: [
-          `Sanitize and validate all external inputs with schema validators (Zod/Valibot).`,
-          `Verify zero hardcoded API keys, JWT secrets, or tokens in source.`,
-          `Prevent SQL injection, command execution concatenation, and XSS.`
+          'Validate all external input with a schema validator (Zod, Valibot).',
+          'Keep API keys, JWT secrets, and tokens out of source code.',
+          'Prevent SQL injection, command string concatenation, and XSS.'
         ]
       },
       {
         role: 'Humanizer Editor (@editor)',
-        mission: 'Eliminate robot writing patterns, clichés, and fake drama.',
+        mission: 'Remove stock AI phrasing from docs, commit messages, and PR descriptions.',
         actions: [
-          `Scan commit message, PR description, and docs against 25 AI cliché tells.`,
-          `Strip "delve", "testament", "pivotal moment", "showcasing", and forced triads.`,
-          `Ensure communication is direct, authentic, and engineer-to-engineer.`
+          'Read the commit message, PR description, and docs for stock AI phrases.',
+          'Cut inflated words and lists padded out to three items.',
+          'Keep messages short and factual.'
         ]
       }
     ]
   };
 
-  // Render in terminal
   plan.swarm.forEach((agent, i) => {
-    console.log(`[Agent ${i + 1}] ${agent.role}`);
-    console.log(`  🎯 Mission: ${agent.mission}`);
-    agent.actions.forEach(act => {
-      console.log(`     • ${act}`);
-    });
-    console.log('');
+    console.log(`\n${i + 1}. ${agent.role}`);
+    console.log(`   Mission: ${agent.mission}`);
+    agent.actions.forEach((act) => console.log(`   - ${act}`));
   });
+  console.log('');
 
-  // Save to .smileu/tasks/ (kept out of the project root, git-ignored)
   const tasksDir = ensureOutputDir(targetDir, 'tasks');
   const taskFilePath = path.join(tasksDir, `task-${timestamp}.md`);
-  const markdownContent = `# Swarm Task Decomposition: ${task}
+  const markdownContent = `# Task Plan: ${task}
 
-**Generated:** ${plan.timestamp}  
+**Generated:** ${plan.timestamp}
 **Methodology:** ${plan.methodology}
 
 ---
@@ -92,17 +87,17 @@ ${plan.swarm
     (a, i) => `## ${i + 1}. ${a.role}
 **Mission:** ${a.mission}
 
-**Action Plan:**
-${a.actions.map(act => `- [ ] ${act}`).join('\n')}
+**Checklist:**
+${a.actions.map((act) => `- [ ] ${act}`).join('\n')}
 `
   )
   .join('\n')}
 
 ---
-*Orchestrated by Smileu Multi-Agent Harness (ruvnet/ruflo framework)*
+*Generated by smileu swarm*
 `;
 
   fs.writeFileSync(taskFilePath, markdownContent, 'utf-8');
-  logSuccess(`Swarm task plan saved to: ${path.relative(targetDir, taskFilePath) || taskFilePath}`);
+  logSuccess(`Task plan saved to ${path.relative(targetDir, taskFilePath).replace(/\\/g, '/')}`);
   return plan;
 }

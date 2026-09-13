@@ -1,32 +1,42 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { checkTooling } from './doctor.js';
-import { logSuccess, logInfo, logWarn, logError } from '../ui.js';
+import { logSuccess, logInfo, logWarn } from '../ui.js';
 import { ensureOutputDir } from '../utils/output.js';
 
 /**
- * Resolves the command prefix to execute graphify.
+ * Resolves how to launch the native Graphify engine, or null when it is not
+ * available. Commands are returned as an executable plus an argument prefix so
+ * they can run without a shell.
  */
 export function getGraphifyCommand() {
   const status = checkTooling();
   if (status.graphifyMethod === 'direct') {
-    return 'graphify';
+    return { cmd: 'graphify', prefix: [], label: 'graphify' };
   }
-  if (status.uv) {
-    return 'uv tool run --from graphifyy graphify';
+  if (status.graphifyMethod === 'uv-tool') {
+    return {
+      cmd: 'uv',
+      prefix: ['tool', 'run', '--from', 'graphifyy', 'graphify'],
+      label: 'uv tool run --from graphifyy graphify'
+    };
   }
   return null;
 }
 
 /**
- * Validates that a path is safe and free of command injection attempts.
+ * Runs one Graphify subcommand. Arguments are passed as an array with no shell,
+ * so a folder name containing quotes, `;`, `&`, `$` or newlines is just a path.
  */
-function sanitizePath(dirPath) {
-  if (/[;&|`$<>]/.test(dirPath)) {
-    throw new Error('Invalid characters detected in target path');
-  }
-  return path.resolve(dirPath);
+function runGraphifyStep(command, args, cwd) {
+  execFileSync(command.cmd, [...command.prefix, ...args], { stdio: 'inherit', cwd, shell: false });
+}
+
+function describeFailure(err) {
+  if (err && err.code === 'ENOENT') return 'command not found';
+  if (err && typeof err.status === 'number') return `exit code ${err.status}`;
+  return (err && err.message) || 'unknown error';
 }
 
 /**
@@ -46,66 +56,63 @@ function relocateStrayOutput(targetDir, graphDir) {
 }
 
 /**
- * Runs Graphify on the target directory.
- * Reports paths relative to the current workspace root.
+ * Builds the knowledge graph for the target directory, using native Graphify
+ * when it is installed and the built-in import scanner otherwise.
  */
 export function runGraphify({ targetDir = process.cwd(), codeOnly = true } = {}) {
-  const safeTarget = sanitizePath(targetDir);
-  const displayTarget = path.relative(process.cwd(), safeTarget) || '.';
-  logInfo(`Analyzing codebase knowledge graph for workspace: ${displayTarget}`);
+  const target = path.resolve(targetDir);
+  const displayTarget = path.relative(process.cwd(), target) || '.';
+  logInfo(`Building the knowledge graph for ${displayTarget}`);
 
-  const cmdPrefix = getGraphifyCommand();
+  const command = getGraphifyCommand();
 
-  if (cmdPrefix) {
-    // The native engine writes its graphify-out folder next to the scanned
-    // target, so we run it, then relocate that folder into .smileu/graph to keep
-    // the project root clean — whether the run succeeds or fails.
-    const graphDir = ensureOutputDir(safeTarget, 'graph');
+  if (command) {
+    const graphDir = ensureOutputDir(target, 'graph');
     let nativeOk = false;
     try {
-      logInfo(`Running native Graphify engine (${cmdPrefix})...`);
-      const flag = codeOnly ? '--code-only' : '';
-      execSync(`${cmdPrefix} extract "${safeTarget}" ${flag}`.trim(), {
-        stdio: 'inherit',
-        cwd: graphDir
-      });
+      logInfo(`Running Graphify (${command.label})...`);
+      runGraphifyStep(command, ['extract', target, ...(codeOnly ? ['--code-only'] : [])], graphDir);
 
       try {
-        execSync(`${cmdPrefix} cluster-only "${safeTarget}"`, { stdio: 'inherit', cwd: graphDir });
-      } catch (clusterErr) {
-        logWarn(`Clustering notice: ${clusterErr.message}`);
+        runGraphifyStep(command, ['cluster-only', target], graphDir);
+      } catch (err) {
+        logWarn(`Graphify clustering skipped (${describeFailure(err)}).`);
       }
 
+      // `tree` reads graphify-out/graph.json relative to its working directory,
+      // so the output has to be moved into .smileu/graph before it runs.
+      relocateStrayOutput(target, graphDir);
       try {
-        execSync(`${cmdPrefix} tree`, { stdio: 'inherit', cwd: graphDir });
-      } catch {}
+        runGraphifyStep(command, ['tree'], graphDir);
+      } catch (err) {
+        logWarn(`Graphify tree view skipped (${describeFailure(err)}).`);
+      }
 
       nativeOk = true;
     } catch (err) {
-      logWarn(`Native Graphify run encountered an error: ${err.message}`);
-      logInfo('Falling back to built-in JavaScript graph generator...');
+      logWarn(`Graphify failed (${describeFailure(err)}). Using the built-in import scanner instead.`);
     } finally {
-      relocateStrayOutput(safeTarget, graphDir);
+      relocateStrayOutput(target, graphDir);
     }
 
     if (nativeOk) {
-      logSuccess(`Graph generated in ${path.relative(safeTarget, graphDir).replace(/\\/g, '/')}`);
+      logSuccess(`Graph written to ${path.relative(target, graphDir).replace(/\\/g, '/')}/`);
       return { success: true, engine: 'native' };
     }
   }
 
-  // Fallback pure JS graph analyzer
-  return runBuiltinJsGraph(safeTarget);
+  return runBuiltinJsGraph(target);
 }
 
 /**
- * Built-in JS dependency scanner when python/graphify is unavailable.
+ * Built-in scanner used when Graphify is not installed. It records files and
+ * the import/require specifiers each one uses; it does not resolve modules.
  */
 export function runBuiltinJsGraph(targetDir) {
-  const safeTarget = sanitizePath(targetDir);
-  const displayTarget = path.relative(process.cwd(), safeTarget) || '.';
-  logInfo('Running built-in JavaScript graph extractor...');
-  const outDir = ensureOutputDir(safeTarget, 'graph');
+  const target = path.resolve(targetDir);
+  const displayTarget = path.relative(process.cwd(), target) || '.';
+  logInfo('Running the built-in import scanner...');
+  const outDir = ensureOutputDir(target, 'graph');
 
   const nodes = [];
   const edges = [];
@@ -133,7 +140,7 @@ export function runBuiltinJsGraph(targetDir) {
       if (entry.isDirectory()) {
         scanDir(fullPath);
       } else if (/\.(js|jsx|ts|tsx|mjs|cjs|json|md)$/i.test(entry.name)) {
-        const relPath = path.relative(safeTarget, fullPath).replace(/\\/g, '/');
+        const relPath = path.relative(target, fullPath).replace(/\\/g, '/');
         let content;
         try {
           content = fs.readFileSync(fullPath, 'utf-8');
@@ -148,39 +155,45 @@ export function runBuiltinJsGraph(targetDir) {
           size: content.length
         });
 
-        // Parse import statements
         const importMatches = content.matchAll(/(?:import|from|require)\s*\(?['"]([^'"]+)['"]\)?/g);
         for (const match of importMatches) {
-          edges.push({
-            source: relPath,
-            target: match[1],
-            relation: 'imports'
-          });
+          edges.push({ source: relPath, target: match[1], relation: 'imports' });
         }
       }
     }
   }
 
-  scanDir(safeTarget);
+  scanDir(target);
 
   const graphData = { nodes, edges, generatedAt: new Date().toISOString() };
   fs.writeFileSync(path.join(outDir, 'graph.json'), JSON.stringify(graphData, null, 2), 'utf-8');
 
+  const importCounts = new Map();
+  for (const edge of edges) {
+    importCounts.set(edge.source, (importCounts.get(edge.source) || 0) + 1);
+  }
+  const mostConnected = nodes
+    .map((n) => ({ ...n, imports: importCounts.get(n.id) || 0 }))
+    .filter((n) => n.imports > 0)
+    .sort((a, b) => b.imports - a.imports || a.id.localeCompare(b.id))
+    .slice(0, 10);
+
   const report = `# Codebase Knowledge Graph Report
 
 Generated: ${new Date().toISOString()}
-Scan Root: \`./${displayTarget === '.' ? '' : displayTarget}\`
-Total Nodes: ${nodes.length}
-Total Edges: ${edges.length}
+Scan root: \`./${displayTarget === '.' ? '' : displayTarget}\`
+Files: ${nodes.length}
+Import edges: ${edges.length}
 
-## Top Connected Files
-${nodes
-  .slice(0, 10)
-  .map((n, i) => `${i + 1}. **${n.id}** (${n.type}, ${n.size} bytes)`)
-  .join('\n')}
+## Files with the most imports
+${
+  mostConnected.length
+    ? mostConnected.map((n, i) => `${i + 1}. **${n.id}** (${n.imports} imports)`).join('\n')
+    : 'No import statements were found.'
+}
 `;
 
   fs.writeFileSync(path.join(outDir, 'GRAPH_REPORT.md'), report, 'utf-8');
-  logSuccess(`Built-in graph generated in ${path.relative(safeTarget, outDir).replace(/\\/g, '/')}`);
+  logSuccess(`Graph written to ${path.relative(target, outDir).replace(/\\/g, '/')}/`);
   return { success: true, engine: 'builtin-js' };
 }

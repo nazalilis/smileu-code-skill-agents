@@ -1,53 +1,54 @@
-import { execSync } from 'node:child_process';
-import { logSuccess, logInfo, logWarn, logError } from '../ui.js';
+import { execFileSync } from 'node:child_process';
+import { logSuccess, logInfo, logNotice, logError, logHeading } from '../ui.js';
 
-function runCmd(cmd) {
+/**
+ * Runs a command without a shell and reports whether it exited 0, plus its
+ * first line of output. Never throws.
+ */
+function probe(cmd, args) {
   try {
-    return execSync(cmd, { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf-8' }).trim();
+    const out = execFileSync(cmd, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf-8',
+      timeout: 30000,
+      windowsHide: true
+    });
+    return { ok: true, firstLine: String(out).trim().split(/\r?\n/)[0] || '' };
   } catch {
-    return null;
+    return { ok: false, firstLine: '' };
   }
+}
+
+function versionOf(cmd, args = ['--version']) {
+  const result = probe(cmd, args);
+  return result.ok ? result.firstLine || 'installed' : null;
 }
 
 export function checkTooling() {
   const status = {
-    node: false,
-    git: false,
-    python: false,
-    uv: false,
+    node: process.version,
+    git: versionOf('git'),
+    python: null,
+    pythonCmd: null,
+    uv: versionOf('uv'),
     graphify: false,
     graphifyMethod: null
   };
 
-  // Node
-  const nodeVer = runCmd('node -v');
-  if (nodeVer) {
-    status.node = nodeVer;
+  const pythonCandidates = process.platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python'];
+  for (const cmd of pythonCandidates) {
+    const version = versionOf(cmd);
+    if (version) {
+      status.python = version;
+      status.pythonCmd = cmd;
+      break;
+    }
   }
 
-  // Git
-  const gitVer = runCmd('git --version');
-  if (gitVer) {
-    status.git = gitVer;
-  }
-
-  // Python
-  const pyVer = runCmd('python --version') || runCmd('python3 --version');
-  if (pyVer) {
-    status.python = pyVer;
-  }
-
-  // uv
-  const uvVer = runCmd('uv --version');
-  if (uvVer) {
-    status.uv = uvVer;
-  }
-
-  // Graphify
-  if (runCmd('graphify --help')) {
+  if (probe('graphify', ['--help']).ok) {
     status.graphify = true;
     status.graphifyMethod = 'direct';
-  } else if (status.uv && runCmd('uv tool run --from graphifyy graphify --help')) {
+  } else if (status.uv && probe('uv', ['tool', 'run', '--from', 'graphifyy', 'graphify', '--help']).ok) {
     status.graphify = true;
     status.graphifyMethod = 'uv-tool';
   }
@@ -56,69 +57,69 @@ export function checkTooling() {
 }
 
 export function printDoctorReport() {
-  console.log('Running Smileu System Diagnostic (Doctor):\n');
+  logHeading('Checking tools');
   const status = checkTooling();
 
-  if (status.node) {
-    logSuccess(`Node.js   : ${status.node}`);
-  } else {
-    logError('Node.js   : Not found in PATH');
-  }
+  logSuccess(`Node.js   ${status.node}`);
 
-  if (status.git) {
-    logSuccess(`Git       : ${status.git}`);
-  } else {
-    logWarn('Git       : Not found in PATH');
-  }
+  if (status.git) logSuccess(`Git       ${status.git}`);
+  else logNotice('Git       not found. Needed for --latest.');
 
-  if (status.python) {
-    logSuccess(`Python    : ${status.python}`);
-  } else {
-    logWarn('Python    : Not found (required for native Graphify engine)');
-  }
+  if (status.python) logSuccess(`Python    ${status.python}`);
+  else logNotice('Python    not found. Needed for the native Graphify engine.');
 
-  if (status.uv) {
-    logSuccess(`uv        : ${status.uv}`);
-  } else {
-    logInfo('uv        : Not installed (optional fast Python runner)');
-  }
+  if (status.uv) logSuccess(`uv        ${status.uv}`);
+  else logInfo('uv        not installed (optional; installs Graphify faster than pip).');
 
   if (status.graphify) {
-    logSuccess(`Graphify  : Ready via ${status.graphifyMethod}`);
+    logSuccess(`Graphify  ${status.graphifyMethod === 'direct' ? 'found on PATH' : 'available through uv'}`);
   } else {
-    logWarn('Graphify  : Not detected. Run "smileu setup-tools" to auto-install.');
+    logNotice('Graphify  not found. Run "smileu setup-tools" to install it, or keep using the built-in scanner.');
   }
 
   console.log('');
   return status;
 }
 
+/**
+ * Installs the native Graphify engine with uv, or with pip when uv is missing.
+ * Returns true when Graphify is available afterwards.
+ */
 export function setupTools() {
-  console.log('Auto-configuring external tools for Smileu Code Skill...\n');
+  logHeading('Installing optional tools');
   const status = checkTooling();
 
-  if (!status.graphify) {
-    if (status.uv) {
-      logInfo('Installing Graphify via uv tool (graphifyy)...');
-      try {
-        execSync('uv tool install --upgrade graphifyy', { stdio: 'inherit' });
-        logSuccess('Graphify successfully installed via uv tool!');
-      } catch (err) {
-        logError(`Failed to install graphifyy via uv: ${err.message}`);
-      }
-    } else if (status.python) {
-      logInfo('Installing Graphify via pip (graphifyy)...');
-      try {
-        execSync('pip install --upgrade graphifyy', { stdio: 'inherit' });
-        logSuccess('Graphify successfully installed via pip!');
-      } catch (err) {
-        logError(`Failed to install graphifyy via pip: ${err.message}`);
-      }
-    } else {
-      logWarn('Python or uv is required to install the native Graphify engine.');
-      logInfo('Smileu will fall back to its embedded lightweight dependency scanner.');
-    }
-  } else {
-    logSuccess('All tools including Graphify are already set up and ready!');
+  if (status.graphify) {
+    logSuccess('Graphify is already installed.');
+    return true;
   }
+
+  const attempt = (label, cmd, args, hint) => {
+    logInfo(`Installing Graphify with ${label}...`);
+    try {
+      execFileSync(cmd, args, { stdio: 'inherit', windowsHide: true });
+      logSuccess(`Installed Graphify with ${label}.`);
+      return true;
+    } catch {
+      logError(`Graphify install with ${label} failed (see the output above). Try "${hint}" yourself, or keep using the built-in scanner.`);
+      return false;
+    }
+  };
+
+  if (status.uv) {
+    return attempt('uv', 'uv', ['tool', 'install', '--upgrade', 'graphifyy'], 'uv tool install graphifyy');
+  }
+
+  if (status.pythonCmd) {
+    // `python -m pip` guarantees pip belongs to the interpreter that was found.
+    return attempt(
+      'pip',
+      status.pythonCmd,
+      ['-m', 'pip', 'install', '--upgrade', 'graphifyy'],
+      `${status.pythonCmd} -m pip install graphifyy`
+    );
+  }
+
+  logError('Graphify needs Python or uv, and neither was found. The built-in import scanner will be used instead.');
+  return false;
 }

@@ -1,50 +1,110 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
-import { logSuccess, logInfo } from '../ui.js';
+import { logSuccess, logInfo, logHeading } from '../ui.js';
+import { ensureOutputDir } from '../utils/output.js';
 
-function askQuestion(rl, query) {
-  return new Promise((resolve) => rl.question(query, resolve));
+const QUESTIONS = [
+  { key: 'featureName', prompt: '1. Project or feature name: ', fallback: 'Core Feature' },
+  { key: 'audience', prompt: '2. Who will use it? ', fallback: 'End users and developers' },
+  { key: 'corePurpose', prompt: '3. What single problem does it solve? ', fallback: 'Provide reliable functionality' },
+  {
+    key: 'invariants',
+    prompt: '4. Rules that must never be broken (e.g. store times in UTC, no raw SQL): ',
+    fallback: 'Strict type safety and no hardcoded secrets'
+  },
+  {
+    key: 'edgeCases',
+    prompt: '5. Critical edge cases and error scenarios: ',
+    fallback: 'Network timeout, unauthenticated access, invalid input'
+  }
+];
+
+/**
+ * Writes `content` to `name` in the target directory. An existing file with
+ * different content is copied to .smileu/backups/ first, so answering the
+ * questions again never destroys earlier edits.
+ */
+function writeWithBackup(targetDir, name, content) {
+  const dest = path.join(targetDir, name);
+  let backup = null;
+
+  if (fs.existsSync(dest)) {
+    const current = fs.readFileSync(dest, 'utf-8');
+    if (current === content) return { status: 'unchanged', backup: null };
+
+    const backupDir = ensureOutputDir(targetDir, 'backups');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    backup = path.join(backupDir, `${name}.${stamp}.bak`);
+    fs.writeFileSync(backup, current, 'utf-8');
+  }
+
+  fs.writeFileSync(dest, content, 'utf-8');
+  return { status: backup ? 'replaced' : 'created', backup };
+}
+
+function reportWrite(targetDir, name, result) {
+  if (result.status === 'unchanged') {
+    logInfo(`${name} already matches these answers.`);
+  } else if (result.status === 'replaced') {
+    const rel = path.relative(targetDir, result.backup).replace(/\\/g, '/');
+    logSuccess(`Replaced ${name} (previous copy saved to ${rel})`);
+  } else {
+    logSuccess(`Created ${name}`);
+  }
 }
 
 /**
- * Conducts an interactive grilling session (Matt Pocock & Impeccable style).
+ * Asks the alignment questions and records the answers in PRODUCT.md and
+ * CONTEXT.md.
+ *
+ * Answers are read line by line, so they can be typed or piped in
+ * (`printf 'Name\nAudience\n...' | smileu grill`). If input ends early, an error
+ * with code SMILEU_INPUT_ENDED is thrown and nothing is written.
  */
-export async function runGrillingSession(targetDir = process.cwd(), options = {}) {
-  console.log('\n======================================================');
-  console.log('   SMILEU GRILLING SESSION (ALIGNMENT & CLARITY)');
-  console.log('   Inspired by mattpocock/skills & pbakaus/impeccable');
-  console.log('======================================================\n');
-  logInfo('Never build on ambiguous assumptions. Clarify product truth and domain rules.\n');
+export async function runGrillingSession(
+  targetDir = process.cwd(),
+  { input = process.stdin, output = process.stdout } = {}
+) {
+  logHeading('Grilling session');
+  logInfo('Answer 5 questions. Press Enter to accept the suggested default.');
+  logInfo('The answers are written to PRODUCT.md and CONTEXT.md; existing copies are backed up to .smileu/backups/.\n');
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
+  const interactive = Boolean(input.isTTY);
+  const rl = readline.createInterface({ input, output, terminal: interactive });
+  // Created before the first prompt so lines that arrive early are buffered,
+  // not dropped (rl.question discards lines that arrive between questions).
+  const lines = rl[Symbol.asyncIterator]();
+  const answers = {};
 
   try {
-    const featureName = (await askQuestion(rl, '1. Project / Feature Name: ')).trim() || 'Core Feature';
-    const audience = (await askQuestion(rl, '2. Target Audience (Who will use this?): ')).trim() || 'End users and developers';
-    const corePurpose = (await askQuestion(rl, '3. Single Main Job / Purpose (What problem does this solve?): ')).trim() || 'Provide reliable functionality';
-    const invariants = (await askQuestion(rl, '4. Non-negotiable Rules / Invariants (e.g., must use UTC, zero raw SQL): ')).trim() || 'Strict type safety and zero hardcoded secrets';
-    const edgeCases = (await askQuestion(rl, '5. Critical Edge Cases / Error Scenarios: ')).trim() || 'Network timeout, unauthenticated access, invalid input';
-
+    for (const [idx, question] of QUESTIONS.entries()) {
+      output.write(question.prompt);
+      const { value, done } = await lines.next();
+      if (done) {
+        const err = new Error(
+          `Input ended before question ${idx + 1} of ${QUESTIONS.length} was answered. ` +
+            'Run "smileu grill" in a terminal, or pipe one answer per line.'
+        );
+        err.code = 'SMILEU_INPUT_ENDED';
+        throw err;
+      }
+      if (!interactive) output.write('\n');
+      answers[question.key] = String(value).trim() || question.fallback;
+    }
+  } finally {
     rl.close();
+  }
 
-    console.log('\n------------------------------------------------------');
-    logInfo('Recording Durable Truth to PRODUCT.md & CONTEXT.md...');
+  const { featureName, audience, corePurpose, invariants, edgeCases } = answers;
 
-    // Update or generate PRODUCT.md
-    const productPath = path.join(targetDir, 'PRODUCT.md');
-    const productContent = `# Product Truth: ${featureName}
+  const productContent = `# Product Truth: ${featureName}
 
 ## 1. Audience
-- **Primary Users:** ${audience}
-- **Operating Context:** Web / Node.js / Multi-agent coding harness
+- **Primary users:** ${audience}
 
 ## 2. Core Purpose
 - **Mission:** ${corePurpose}
-- **Target Outcome:** High reliability, zero ambiguity, production quality
 
 ## 3. Boundary Invariants
 - ${invariants}
@@ -53,34 +113,28 @@ export async function runGrillingSession(targetDir = process.cwd(), options = {}
 - ${edgeCases}
 
 ## 5. Voice & Tone
-- Direct, concise, precise, no AI boilerplate.
+- Direct, concise and precise.
 `;
-    fs.writeFileSync(productPath, productContent, 'utf-8');
-    logSuccess(`Saved product truth to: ${path.relative(targetDir, productPath) || 'PRODUCT.md'}`);
 
-    // Update or generate CONTEXT.md
-    const contextPath = path.join(targetDir, 'CONTEXT.md');
-    const contextContent = `# Domain Context & Dictionary: ${featureName}
+  const contextContent = `# Domain Context & Dictionary: ${featureName}
 
 ## 1. Ubiquitous Vocabulary
 - **${featureName}**: The primary capability under active development.
-- **Grilling Session**: Pre-coding alignment to eliminate ambiguity.
+- **Grilling Session**: Pre-coding alignment to remove ambiguity.
 - **Invariants**: Rules that must never be broken by an AI agent.
 
 ## 2. Invariant Rules
 1. ${invariants}
-2. All errors must be handled gracefully without silent failures.
+2. All errors must be handled without silent failures.
 
 ## 3. Known Edge Cases
 1. ${edgeCases}
 `;
-    fs.writeFileSync(contextPath, contextContent, 'utf-8');
-    logSuccess(`Saved domain dictionary to: ${path.relative(targetDir, contextPath) || 'CONTEXT.md'}`);
 
-    console.log('------------------------------------------------------');
-    logSuccess('Grilling session complete! AI agents now share durable project truth.\n');
-  } catch (err) {
-    rl.close();
-    throw err;
-  }
+  console.log('');
+  reportWrite(targetDir, 'PRODUCT.md', writeWithBackup(targetDir, 'PRODUCT.md', productContent));
+  reportWrite(targetDir, 'CONTEXT.md', writeWithBackup(targetDir, 'CONTEXT.md', contextContent));
+  logSuccess('Grilling session complete.');
+
+  return answers;
 }

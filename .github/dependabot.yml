@@ -1,0 +1,29 @@
+version: 2
+
+updates:
+  # Runtime and dev dependencies of the CLI. Minor and patch updates are grouped
+  # into one pull request a week; majors arrive separately so they get reviewed.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Versions of the GitHub Actions used by the CI and release workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    groups:
+      github-actions:
+        patterns: ["*"]
