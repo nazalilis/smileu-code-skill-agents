@@ -59,7 +59,7 @@ npm install -g smileu-code-skill
 ```
 
 #### From GitHub Packages
-Each release is also published as `@nazalilis/smileu-code-skill` on GitHub Packages. GitHub Packages asks for a login even to install, so this route suits people who already have access to the repository. Create a personal access token with the `read:packages` scope, then:
+Each release is also published as `@nazalilis/smileu-code-skill-agents` on GitHub Packages. GitHub Packages asks for a login even to install, so this route suits people who already have access to the repository. Create a personal access token with the `read:packages` scope, then:
 ```bash
 npm config set @nazalilis:registry https://npm.pkg.github.com
 ```
@@ -67,7 +67,7 @@ npm config set @nazalilis:registry https://npm.pkg.github.com
 npm login --scope=@nazalilis --auth-type=legacy --registry=https://npm.pkg.github.com
 ```
 ```bash
-npm install -g @nazalilis/smileu-code-skill
+npm install -g @nazalilis/smileu-code-skill-agents
 ```
 
 #### From a clone
@@ -319,7 +319,7 @@ smileu-code-skill-agents/
 
 Versions follow [Semantic Versioning](https://semver.org/), and every release has a section in [CHANGELOG.md](CHANGELOG.md) in [Keep a Changelog](https://keepachangelog.com/) format. Write entries under `## [Unreleased]` as you work; cutting a release moves them into a dated version section.
 
-Releasing never creates commits or pull requests on its own. The version bump is a commit you make; GitHub Actions only adds the `vX.Y.Z` tag, creates the GitHub Release with notes from the changelog, and publishes the package: `@nazalilis/smileu-code-skill` to GitHub Packages, and `smileu-code-skill` to npm when an `NPM_TOKEN` secret is configured.
+Releasing never creates commits or pull requests on its own. The version bump is a commit you make; GitHub Actions only adds the `vX.Y.Z` tag, creates the GitHub Release with notes from the changelog, and publishes the package: `@nazalilis/smileu-code-skill-agents` to GitHub Packages, and `smileu-code-skill` to npm when an `NPM_TOKEN` secret is configured.
 
 #### 1. Choose the release type and cut it locally
 Preview first, then cut the release. The script runs the tests, bumps `package.json`, moves `[Unreleased]` into a dated section, commits and tags:

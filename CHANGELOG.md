@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- GitHub Actions moved to releases that run on Node.js 24 (checkout v6.1.0, setup-node
+  v6.5.0, action-gh-release v3.0.3, codeql-action v4.38.0), still pinned to commit SHAs.
+  This removes the "Node.js 20 is deprecated" warning from every run.
+- **GitHub Packages name** is now `@nazalilis/smileu-code-skill-agents`, matching this
+  repository. `@nazalilis/smileu-code-skill` already exists on GitHub Packages, linked to
+  an older repository, and a workflow may only publish packages linked to its own
+  repository. The npm name `smileu-code-skill` is unchanged.
+
+### Fixed
+- Publishing 1.1.0 to GitHub Packages failed with `403 permission_denied: write_package`
+  because of the name clash described above.
+- A failed GitHub Packages publish stopped the npm publish as well, so
+  `npx smileu-code-skill` stayed unavailable after the 1.1.0 release. Each registry is
+  now published independently, the GitHub Release is created when at least one publish
+  succeeded, and the job still fails when either publish failed.
+- `package.json` uses the `bin` paths and repository URL in the form npm expects, so
+  publishing no longer warns that the `bin` entries were "invalid and removed".
+
 ---
 
 ## [1.1.0] - 2026-09-13

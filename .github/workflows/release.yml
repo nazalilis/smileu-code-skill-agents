@@ -14,7 +14,8 @@ name: Release & Publish Package
 # to only see the plan.
 #
 # Published to:
-# - GitHub Packages as @nazalilis/smileu-code-skill (always), and
+# - GitHub Packages as @nazalilis/smileu-code-skill-agents (always; the name matches
+#   this repository, because GITHUB_TOKEN may only publish packages linked to it), and
 # - the public npm registry as smileu-code-skill when the NPM_TOKEN secret is set,
 #   so users can run "npx smileu-code-skill". Override the npm name with the
 #   NPM_PACKAGE_NAME repository variable.
@@ -60,13 +61,13 @@ jobs:
       needs_tag: ${{ steps.plan.outputs.needs_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
 
@@ -163,12 +164,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
           cache: npm
@@ -192,14 +193,14 @@ jobs:
       VERSION: ${{ needs.plan.outputs.version }}
       TAG: ${{ needs.plan.outputs.tag }}
       PRERELEASE: ${{ needs.plan.outputs.prerelease }}
-      PACKAGE_NAME: '@nazalilis/smileu-code-skill'
+      PACKAGE_NAME: '@nazalilis/smileu-code-skill-agents'
       NPM_PACKAGE_NAME: ${{ vars.NPM_PACKAGE_NAME || 'smileu-code-skill' }}
       # Only whether the secret exists is shared with every step. The token itself
       # is mapped into the environment of the npm publish step alone.
       HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           # No git credentials stay behind for later steps; the tag is created
@@ -207,7 +208,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js for GitHub Packages
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 20
           registry-url: 'https://npm.pkg.github.com'
@@ -236,6 +237,10 @@ jobs:
           echo "Created tag $TAG at $GITHUB_SHA."
 
       - name: Publish to GitHub Packages
+        id: github_packages
+        # A problem on one registry must not stop the other from being published.
+        # The last step fails the job when either publish failed.
+        continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -250,7 +255,9 @@ jobs:
           echo "Published $PACKAGE_NAME@$VERSION to GitHub Packages (dist-tag: $DIST_TAG)." | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Publish to the npm registry
+        id: npm_registry
         if: env.HAS_NPM_TOKEN == 'true'
+        continue-on-error: true
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -281,30 +288,24 @@ jobs:
           echo "NPM_TOKEN is not set, so $NPM_PACKAGE_NAME was not published to npm and 'npx $NPM_PACKAGE_NAME' will not work yet." | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Prepare release notes
+        env:
+          NPM_OUTCOME: ${{ steps.npm_registry.outcome }}
+          GITHUB_PACKAGES_OUTCOME: ${{ steps.github_packages.outcome }}
         run: |
           if ! node scripts/release-notes.js "$VERSION" > RELEASE_NOTES.md; then
             : > RELEASE_NOTES.md
           fi
           # Only point people at a registry the package was actually published to.
-          {
-            echo ""
-            echo "### Install"
-            echo ""
-            echo '```bash'
-            if [ "$HAS_NPM_TOKEN" = "true" ]; then
-              echo "npx $NPM_PACKAGE_NAME@$VERSION init"
-            else
-              echo "npm install -g $PACKAGE_NAME@$VERSION"
-            fi
-            echo '```'
-            if [ "$HAS_NPM_TOKEN" != "true" ]; then
-              echo ""
-              echo "Installing from GitHub Packages requires logging in to npm.pkg.github.com first."
-            fi
-          } >> RELEASE_NOTES.md
+          if [ "$NPM_OUTCOME" = "success" ]; then
+            printf '\n### Install\n\n```bash\nnpx %s@%s init\n```\n' "$NPM_PACKAGE_NAME" "$VERSION" >> RELEASE_NOTES.md
+          elif [ "$GITHUB_PACKAGES_OUTCOME" = "success" ]; then
+            printf '\n### Install\n\n```bash\nnpm install -g %s@%s\n```\n\nInstalling from GitHub Packages requires logging in to npm.pkg.github.com first.\n' "$PACKAGE_NAME" "$VERSION" >> RELEASE_NOTES.md
+          fi
 
       - name: Create or update GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        # Only announce a release that can actually be installed from somewhere.
+        if: steps.npm_registry.outcome == 'success' || steps.github_packages.outcome == 'success'
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ env.TAG }}
           name: Smileu Code Skill ${{ env.TAG }}
@@ -317,3 +318,12 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fail the release when a publish failed
+        if: steps.github_packages.outcome == 'failure' || steps.npm_registry.outcome == 'failure'
+        env:
+          NPM_OUTCOME: ${{ steps.npm_registry.outcome }}
+          GITHUB_PACKAGES_OUTCOME: ${{ steps.github_packages.outcome }}
+        run: |
+          echo "::error::Publishing did not fully succeed (GitHub Packages: $GITHUB_PACKAGES_OUTCOME, npm: $NPM_OUTCOME). Fix the cause and re-run this job; versions that were already published are skipped."
+          exit 1

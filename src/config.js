@@ -11,7 +11,9 @@ export const MASTER_SKILL_ID = 'smileu-code-skill';
 
 // The published package and the GitHub repository it is built from. Releases
 // are read from this repository by `smileu update --check`.
-export const PACKAGE_NAME = '@nazalilis/smileu-code-skill';
+// The GitHub Packages name matches this repository: GITHUB_TOKEN may only publish
+// packages that are linked to the repository the workflow runs in.
+export const PACKAGE_NAME = '@nazalilis/smileu-code-skill-agents';
 
 // GitHub Packages only accepts scoped names, so the public npm registry gets an
 // unscoped name instead. That is what makes `npx smileu-code-skill` work.
