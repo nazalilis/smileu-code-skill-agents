@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.1.0] - 2026-09-13
+
 ### Added
 - **`smileu update`.** Refreshes installed skills and agent personas from the bundled
   library, or from GitHub with `--latest`. Only files whose content changed are
