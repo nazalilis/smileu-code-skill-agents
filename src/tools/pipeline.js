@@ -6,6 +6,7 @@ import { runHumanizerCheck } from './humanizer.js';
 import { runDesignAudit } from './design.js';
 import { ensureTemplates } from '../installer.js';
 import { logSuccess, logNotice, logWarn, logHeading } from '../ui.js';
+import { CLI } from '../utils/invocation.js';
 
 /**
  * Runs every check in order. A failing step is reported and the remaining
@@ -40,7 +41,7 @@ export async function runFullPipeline(targetDir = process.cwd()) {
   if (fs.existsSync(path.join(targetDir, 'AGENTS.md'))) {
     logSuccess('Found AGENTS.md.');
   } else {
-    logNotice('AGENTS.md not found. Run "smileu init" to create it.');
+    logNotice(`AGENTS.md not found. Run "${CLI} init" to create it.`);
   }
 
   console.log('\n[Phase 4/6: Craft] Design scan');

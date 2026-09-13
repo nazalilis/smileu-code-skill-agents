@@ -47,24 +47,26 @@ function isInside(base, candidate) {
 
 /**
  * Lists the skill folders installed for each editor layout in `targetDir`.
- * Editors that share a layout (Antigravity and Windsurf both use .agent/) are
- * reported as one target so the same folder is never updated twice.
+ * Editors that share a skills folder (Cursor, Windsurf and Antigravity all read
+ * `.agents/skills`) are reported as one target so the folder is updated once.
+ * `agentsDirs` holds the distinct persona folders of those editors.
  */
 export function detectInstalledSkills(targetDir = process.cwd()) {
   const targets = new Map();
 
   for (const [editor, cfg] of Object.entries(EDITOR_TARGETS)) {
-    const existing = targets.get(cfg.skills);
-    if (existing) {
-      existing.editors.push(editor);
-      continue;
+    let target = targets.get(cfg.skills);
+    if (!target) {
+      target = {
+        skillsDir: cfg.skills,
+        agentsDirs: [],
+        editors: [],
+        skills: listSkillIds(path.join(targetDir, cfg.skills))
+      };
+      targets.set(cfg.skills, target);
     }
-    targets.set(cfg.skills, {
-      skillsDir: cfg.skills,
-      agentsDir: cfg.agents,
-      editors: [editor],
-      skills: listSkillIds(path.join(targetDir, cfg.skills))
-    });
+    target.editors.push(editor);
+    if (cfg.agents && !target.agentsDirs.includes(cfg.agents)) target.agentsDirs.push(cfg.agents);
   }
 
   return [...targets.values()].filter((t) => t.skills.length > 0);
@@ -200,15 +202,45 @@ export function updateWorkspace({
       else entry.unchanged.push(id);
     }
 
-    // Personas are refreshed only where the editor already has an agents folder,
-    // so an update never adds agent files the user chose not to install.
-    const agentsDest = path.join(targetDir, target.agentsDir);
-    if (fs.existsSync(agentsSource) && fs.existsSync(agentsDest)) {
-      const stats = { written: 0, unchanged: 0, skipped: [] };
-      syncDirectory(agentsSource, agentsDest, dryRun, stats);
-      entry.agentFilesWritten = stats.written;
-      result.filesWritten += stats.written;
-      result.skippedPaths.push(...stats.skipped);
+    // Only persona files that are already installed are refreshed, and only in
+    // the agents folders of the editors being updated. A persona the user
+    // deleted stays deleted, and `--editor windsurf` never touches .cursor/agents.
+    const agentsDirs =
+      editor === 'all' ? target.agentsDirs : [EDITOR_TARGETS[editor].agents].filter(Boolean);
+    const personaFiles = fs.existsSync(agentsSource)
+      ? fs.readdirSync(agentsSource).filter((f) => f.endsWith('.md'))
+      : [];
+
+    for (const agentsDir of agentsDirs) {
+      const agentsDest = path.join(targetDir, agentsDir);
+      try {
+        if (!fs.lstatSync(agentsDest).isDirectory()) {
+          result.skippedPaths.push(agentsDest);
+          continue;
+        }
+      } catch {
+        continue;
+      }
+
+      for (const file of personaFiles) {
+        const src = path.join(agentsSource, file);
+        const dest = path.join(agentsDest, file);
+        let destStat;
+        try {
+          destStat = fs.lstatSync(dest);
+        } catch {
+          continue;
+        }
+        if (!destStat.isFile()) {
+          result.skippedPaths.push(dest);
+          continue;
+        }
+        if (destStat.size === fs.statSync(src).size && hashFile(src) === hashFile(dest)) continue;
+
+        entry.agentFilesWritten += 1;
+        result.filesWritten += 1;
+        if (!dryRun) fs.copyFileSync(src, dest);
+      }
     }
 
     result.targets.push(entry);

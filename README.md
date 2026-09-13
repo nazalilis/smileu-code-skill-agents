@@ -1,369 +1,419 @@
 <div align="center">
-  <img src="assets/banner.png" alt="Smileu Code Skill logo" width="100%" />
+  <img src="assets/banner.png" alt="Smileu Code Skill" width="100%" />
 </div>
 
 # Smileu Code Skill
 
-A CLI that installs AI coding skills and agent personas into Claude Code, Cursor, Antigravity and Windsurf, keeps them up to date, and runs local checks for hardcoded secrets, UI anti-patterns and stock AI phrasing.
+Smileu Code Skill adds a library of AI coding skills, agent personas and a `/smileu` command to your project, in the folders Claude Code, Cursor, Windsurf and Antigravity read. It also runs local checks for hardcoded secrets, UI anti-patterns and stock AI phrasing.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](package.json)
 [![npm](https://img.shields.io/npm/v/smileu-code-skill.svg)](https://www.npmjs.com/package/smileu-code-skill)
-[![Skills](https://img.shields.io/badge/skills-889-purple.svg)](skills/)
-[![Agents](https://img.shields.io/badge/agent%20personas-12-orange.svg)](templates/agents/)
-[![CI](https://github.com/nazalilis/smileu-code-skill-agents/actions/workflows/ci.yml/badge.svg)](https://github.com/nazalilis/smileu-code-skill-agents/actions/workflows/ci.yml)
-
----
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## Contents
 
-- [Why it exists](#why-it-exists)
-- [Install](#install)
+- [Requirements](#requirements)
 - [Quick start](#quick-start)
-- [Keeping skills up to date](#keeping-skills-up-to-date)
-- [Commands](#commands)
-- [The six-phase workflow](#the-six-phase-workflow)
+- [npx or a global install](#npx-or-a-global-install)
+- [Set up your editor](#set-up-your-editor)
+- [What gets added to your project](#what-gets-added-to-your-project)
+- [Using Smileu in your editor](#using-smileu-in-your-editor)
 - [Agent personas](#agent-personas)
-- [Upstream projects](#upstream-projects)
-- [In-editor prompts](#in-editor-prompts)
-- [Repository structure](#repository-structure)
-- [Releases and publishing](#releases-and-publishing)
-- [License](#license)
+- [Command reference](#command-reference)
+- [Keeping skills up to date](#keeping-skills-up-to-date)
+- [Upgrading from version 1.1.1 or earlier](#upgrading-from-version-111-or-earlier)
+- [Uninstalling](#uninstalling)
+- [Troubleshooting](#troubleshooting)
+- [Skill library](#skill-library)
+- [Credits](#credits)
+- [Security, changelog and license](#security-changelog-and-license)
 
----
+## Requirements
 
-## Why it exists
+- Node.js 18 or later.
+- Claude Code, Cursor, Windsurf or Antigravity. Other AI tools that read `.agents/skills/` work too.
+- Optional: Git, to install from the current library on GitHub with `--latest`.
+- Optional: Graphify, for a more detailed `graph`. The `setup-tools` command installs it and needs Python or uv. Without Graphify, `graph` uses a built-in scanner.
 
-AI coding agents write code quickly, but without guidance they tend to produce:
+## Quick start
 
-- invented endpoints and tangled dependencies,
-- generic UI: purple gradients, cards nested in cards, bouncy animation,
-- hardcoded tokens, `eval()` calls and shell commands built from strings,
-- documentation padded with stock AI phrasing.
+1. Open a terminal in your project folder and run:
 
-Smileu packages 889 skills and 12 agent personas drawn from eight open-source projects, installs them into the folders your editor reads, and adds commands that check a project for the problems above. It needs Node.js 18 or later. Git, Python and uv are optional.
+   ```bash
+   npx smileu-code-skill init
+   ```
 
----
+2. Choose your editor and how much of the library to install.
+3. Open the project in your editor. If it is already open, reload the window so the editor picks up the new files.
+4. In the editor's chat, type:
 
-## Install
+   ```text
+   /smileu
+   ```
 
-#### Run without installing
-```bash
-npx smileu-code-skill init
-```
+   The agent lists the phases. `/smileu secure`, for example, runs the security scan and fixes what it finds.
 
-#### Install globally
-After a global install the command is `smileu`:
+## npx or a global install
+
+`npx smileu-code-skill` downloads the package into npm's cache and runs it for that one command. It does not add a `smileu` command to your system, so typing `smileu` afterwards fails with `command not found`.
+
+| | Without installing | Global install |
+|---|---|---|
+| One-time setup | none | `npm install -g smileu-code-skill` |
+| How to run a command | `npx smileu-code-skill <command>` | `smileu <command>` |
+| Upgrade | `npx smileu-code-skill@latest <command>` | `npm install -g smileu-code-skill@latest` |
+
+To install the `smileu` command:
+
 ```bash
 npm install -g smileu-code-skill
 ```
 
-#### From GitHub Packages
-Each release is also published as `@nazalilis/smileu-code-skill-agents` on GitHub Packages. GitHub Packages asks for a login even to install, so this route suits people who already have access to the repository. Create a personal access token with the `read:packages` scope, then:
 ```bash
-npm config set @nazalilis:registry https://npm.pkg.github.com
-```
-```bash
-npm login --scope=@nazalilis --auth-type=legacy --registry=https://npm.pkg.github.com
-```
-```bash
-npm install -g @nazalilis/smileu-code-skill-agents
+smileu --version
 ```
 
-#### From a clone
-```bash
-git clone https://github.com/nazalilis/smileu-code-skill-agents.git
-```
-```bash
-cd smileu-code-skill-agents && npm install && npm link
-```
+Both forms accept the same commands and options. The examples in this README use `npx smileu-code-skill`; replace it with `smileu` if you installed globally.
 
-The examples below use `smileu`. Without a global install, replace it with `npx smileu-code-skill`.
+The package is also published to GitHub Packages as `@nazalilis/smileu-code-skill-agents`. To install from there, add `@nazalilis:registry=https://npm.pkg.github.com` to your `.npmrc` and log in to that registry with a GitHub token that has the `read:packages` scope.
 
----
+## Set up your editor
 
-## Quick start
+Run `init` with the name of your editor. Without a name, `init` installs for Claude Code, Cursor, Windsurf and Antigravity together.
 
-#### Install everything (interactive)
-In a terminal, `init` asks which editor and how much of the library to install:
-```bash
-smileu init
-```
-
-#### Install without prompts
-`-y` takes the defaults: the full library in every editor. In CI or other non-terminal runs, `init` refuses to guess and asks for `-y` or an explicit editor or scope.
-```bash
-smileu init -y
-```
-
-#### Install for one editor
-```bash
-smileu init claude
-```
-Editors: `claude` (`.claude/skills`, `.claude/agents`, `CLAUDE.md`), `cursor` (`.cursor/rules`, `.cursor/agents`, `.cursorrules`), `antigravity` (`.agent/skills`, `.agent/agents`), `windsurf` (`.agent/` plus `.windsurfrules`), `universal` (`.skills/`), or `all`.
-
-#### Install only the 9 core skills
-```bash
-smileu init --core -e cursor
-```
-
-#### Add individual skills
-```bash
-smileu add domain-modeling tdd
-```
-
-#### Find a skill name
-```bash
-smileu list --all security
-```
-
-#### Preview without writing anything
-```bash
-smileu init --dry-run
-```
-
-`init` creates `PRODUCT.md`, `CONTEXT.md`, `DESIGN.md`, `AGENTS.md`, the editor rules file and a seed ADR only when they do not exist yet, so re-running it never overwrites your edits. Agent persona files that already exist are kept too; pass `--force` to replace them.
-
----
-
-## Keeping skills up to date
-
-#### Refresh installed skills from the library
-`update` rewrites only the skill and persona files whose content changed. Files you added next to a skill are kept, symlinks are never written through, and project documents are not touched.
-```bash
-smileu update
-```
-
-#### Pull the current library from GitHub
-```bash
-smileu update --latest
-```
-
-#### Also install skills that were added to the library since your last install
-```bash
-smileu update --include-new
-```
-
-#### See what would change
-```bash
-smileu update --dry-run
-```
-
-#### Check whether a newer CLI release exists
-Looks up the newest published version on npm, falling back to GitHub Releases, and prints the upgrade command. It writes nothing.
-```bash
-smileu update --check
-```
-
-Each install and update records what it did in `.smileu/manifest.json`, which `update` uses to tell you when a full install is missing newly published skills.
-
----
-
-## Commands
-
-| Command | What it does | Exit code |
+| Editor | Install command | Use it in the editor |
 |---|---|---|
-| `init [editor]` | Install skills, agent personas and project templates. The default command. | 1 if anything failed |
-| `add <skill...>` | Install skills by name. Names must match a library folder exactly. | 1 if a skill was not found |
-| `update` | Refresh installed skills and personas. See [Keeping skills up to date](#keeping-skills-up-to-date). | 1 if nothing is installed |
-| `audit` | Scan for hardcoded secrets (including `.env` files), `eval()`, `new Function()`, shell commands built from strings or run with a `shell` option, and run `npm audit`. | 1 on critical or high findings |
-| `craft` | Flag pure `#000` black, `bounce`/`elastic` easing and nested `card` classes in UI files. | 0 (advisory) |
-| `humanize` | Flag 8 common AI phrases in Markdown files. | 0 (advisory) |
-| `graph` | Build a file and import graph with Graphify, or with the built-in import scanner when Graphify is not installed. | 0 |
-| `run-all` | Templates, graph, craft, audit and humanize, in that order. | 1 if a step failed |
-| `grill` | Ask 5 questions and write `PRODUCT.md` and `CONTEXT.md`. Existing copies are backed up to `.smileu/backups/`. Answers can be piped in, one per line. | 2 if input ends early |
-| `swarm "<task>"` | Save a checklist for five agent roles to `.smileu/tasks/`. It writes a plan; it does not run agents. | 2 without a task |
-| `motion [preset]` | Print CSS, Tailwind and Framer Motion easing for `enter`, `exit`, `hover` or `modal`. | 2 for an unknown preset |
-| `doctor` | Show which of Node.js, Git, Python, uv and Graphify are available. | 0 |
-| `setup-tools` | Install Graphify with uv, or with pip when uv is missing. | 1 if the install failed |
-| `list [--all] [filter]` | List the core skills, or every skill name. | 1 if the filter matches nothing |
-| `repos` | List the upstream projects. | 0 |
+| Claude Code | `npx smileu-code-skill init claude` | Type `/smileu <phase>`. Personas appear under `/agents`. |
+| Cursor | `npx smileu-code-skill init cursor` | Type `/smileu <phase>` in Agent chat. Personas are available as subagents. |
+| Windsurf | `npx smileu-code-skill init windsurf` | Type `/smileu <phase>` in Cascade. |
+| Antigravity | `npx smileu-code-skill init antigravity` | Type `/smileu <phase>` in the agent chat. |
+| Other agents that read `.agents/skills` | `npx smileu-code-skill init universal` | Ask the agent to use the `smileu` skill. |
+| All four editors | `npx smileu-code-skill init -y` | As above, in each editor. |
 
-Aliases: `install` = `init`, `align` = `grill`, `secure` = `audit`, `polish` = `craft`, `pipeline` = `run-all`.
+### How much to install
 
-Usage errors (unknown command or option, missing value) exit with code 2 and suggest the closest command. Warnings and errors go to stderr. Colour is off when output is not a terminal, when `NO_COLOR` is set, or with `--no-color`.
+| Choice | Command | Skills |
+|---|---|---|
+| Full library (default) | `npx smileu-code-skill init cursor` | all 890 |
+| Core set | `npx smileu-code-skill init cursor --core` | 10: `smileu`, `smileu-code-skill` and the 8 skills listed under [Skill library](#skill-library) |
+| Specific skills | `npx smileu-code-skill add domain-modeling tdd` | the ones you name, plus `smileu` and `smileu-code-skill` |
+| Preview only | `npx smileu-code-skill init cursor --dry-run` | none; lists what would be written |
 
-All reports, graphs, task plans, backups and the manifest are written under `.smileu/`, which is added to your `.gitignore` automatically. The one exception is `grill`, which writes `PRODUCT.md` and `CONTEXT.md` at the project root on purpose.
+`add` copies skill folders only. It does not create personas, project documents, rule files or the Windsurf `/smileu` workflow. In a new project, run `init <editor> --core` first and use `add` for extra skills.
 
-`audit` is a pattern scan, not a full OWASP Top 10 review. Test and fixture folders are exempt from it.
+In a terminal, `init` without options asks which editor and scope you want. In CI and scripts there is nobody to answer, so pass an editor name, `--core` or `-y`.
 
----
+Cursor also reads `.claude/skills/`. After an install for all editors, Cursor can therefore list each skill twice. If you only use Cursor, install with `init cursor`.
 
-## The six-phase workflow
+## What gets added to your project
 
-The master skill asks agents to work through six phases in order instead of jumping straight to code:
+An install for all editors adds the following. An install for one editor adds only the parts marked for it in the table below.
 
+```text
+your-project/
+├── .claude/
+│   ├── skills/                  Claude Code skills, one folder per skill
+│   └── agents/                  12 personas for Claude Code
+├── .agents/
+│   ├── skills/                  the same skills for Cursor, Windsurf, Antigravity and other agents
+│   └── rules/smileu.md          Antigravity project rules
+├── .cursor/
+│   ├── rules/smileu.mdc         Cursor project rules, always applied
+│   └── agents/                  12 personas for Cursor
+├── .windsurf/
+│   ├── rules/smileu.md          Windsurf project rules, always on
+│   └── workflows/smileu.md      the /smileu command in Windsurf
+├── .smileu/                     install record, reports, graph, task plans and backups
+├── docs/adr/0001-unified-vibe-coding-harness.md
+├── .gitignore                   gets a .smileu/ entry
+├── AGENTS.md
+├── CLAUDE.md
+├── CONTEXT.md
+├── DESIGN.md
+└── PRODUCT.md
 ```
-[1. ALIGN]     --> Clarify intent, scope and domain terms (PRODUCT.md, CONTEXT.md)
-      |
-[2. ARCHITECT] --> Map dependencies (.smileu/graph/) and record decisions (docs/adr/)
-      |
-[3. SWARM]     --> Split the work across agent personas using SPARC
-      |
-[4. CRAFT]     --> Apply the design rules: type scale, 4px/8px spacing, restrained motion
-      |
-[5. SECURE]    --> Validate input, pass command arguments as arrays, keep secrets out of code
-      |
-[6. HUMANIZE]  --> Remove stock AI phrasing and state facts plainly
-```
 
-`smileu run-all` runs the checks that back phases 1, 2, 4, 5 and 6.
+| Path | Written for | Purpose |
+|---|---|---|
+| `.claude/skills/` | Claude Code | Skill folders. Claude Code loads a skill when your request matches its description. |
+| `.agents/skills/` | Cursor, Windsurf, Antigravity, other agents | The same skill folders, in the location these tools share. |
+| `.claude/skills/smileu/`, `.agents/skills/smileu/` | every editor | The `/smileu` command. |
+| `.claude/skills/smileu-code-skill/`, `.agents/skills/smileu-code-skill/` | every editor | The main guidelines: the six phases and the rules for design, security and writing. |
+| `.claude/agents/` | Claude Code | Persona files, loaded as subagents. |
+| `.cursor/agents/` | Cursor | Persona files, loaded as subagents. |
+| `CLAUDE.md` | Claude Code | Project instructions Claude Code reads at the start of each session. It imports `AGENTS.md`. |
+| `.cursor/rules/smileu.mdc` | Cursor | Project rules applied to every Agent request. |
+| `.windsurf/rules/smileu.md` | Windsurf | Project rules applied to every Cascade request. |
+| `.windsurf/workflows/smileu.md` | Windsurf | Makes `/smileu` available in Cascade. |
+| `.agents/rules/smileu.md` | Antigravity | Project rules for the Antigravity agent. |
+| `AGENTS.md` | every editor | Agent roles and the order of the six phases. Cursor and Windsurf read it directly. |
+| `PRODUCT.md` | every editor | Audience, purpose, constraints and voice of the project. Fill it in, or use `/smileu align`. |
+| `CONTEXT.md` | every editor | Domain terms and rules that must not be broken. |
+| `DESIGN.md` | every editor | Design system notes: type, color, spacing and motion. |
+| `docs/adr/0001-unified-vibe-coding-harness.md` | every editor | A first architecture decision record, as an example for your own. |
+| `.gitignore` | every editor | `init` adds a `.smileu/` entry, and creates the file if there is none. |
+| `.smileu/` | created by `init` | The install record and the output of the checks. See the table below. |
 
----
+### What happens when you run init again
+
+- Project documents, rule files and the Windsurf workflow are created only when they are missing, so your edits to them are kept.
+- Persona files that already exist are kept unless you pass `--force`. Persona files you deleted are added back.
+- Skill files are copied again from the library, so edits you made inside a skill folder are replaced. Files you added to a skill folder stay.
+
+### The .smileu folder
+
+| Path | Created by |
+|---|---|
+| `.smileu/manifest.json` | `init`, `add` and `update`: which skills and editors are installed |
+| `.smileu/reports/SECURITY_AUDIT.md` | `audit`, `/smileu secure` |
+| `.smileu/reports/DESIGN_AUDIT.md` | `craft`, `/smileu craft` |
+| `.smileu/reports/HUMANIZER_AUDIT.md` | `humanize`, `/smileu humanize` |
+| `.smileu/graph/` | `graph`, `/smileu graph` |
+| `.smileu/tasks/task-*.md` | `swarm`, `/smileu swarm` |
+| `.smileu/backups/` | `grill`, before it replaces `PRODUCT.md` or `CONTEXT.md` |
+
+### What to commit
+
+Commit the editor folders and project documents when everyone on the team should work with the same skills and rules. If each developer installs Smileu separately, add `.claude/skills/` and `.agents/skills/` to `.gitignore` instead. Keep `.smileu/` out of version control; `init` already ignores it.
+
+## Using Smileu in your editor
+
+| Type in the chat | What the agent does |
+|---|---|
+| `/smileu` | Lists the phases and asks which one to run. |
+| `/smileu align` | Asks two or three questions about unclear requirements, then updates `PRODUCT.md` and `CONTEXT.md`. |
+| `/smileu graph` | Maps the project's files and imports and names the files the current work touches. |
+| `/smileu swarm add password reset` | Writes a five-role plan to `.smileu/tasks/` and works through it. |
+| `/smileu craft` | Runs the design scan and fixes each finding. |
+| `/smileu polish` | Reviews spacing, type, contrast and motion in the files you changed. |
+| `/smileu secure` | Runs the security scan, fixes the findings and runs it again until it passes. |
+| `/smileu humanize` | Rewrites stock AI phrasing in Markdown files. |
+| `/smileu motion enter` | Applies an easing preset (`enter`, `exit`, `hover` or `modal`). |
+| `/smileu all` | Runs every check, then works through the reports in order. |
+| `/smileu update` | Refreshes the installed skills. |
+| `/smileu doctor` | Reports which optional tools are missing. |
+
+When a phase needs a check, the agent runs the CLI in the editor's terminal. It uses `smileu` when it is installed globally and `npx --yes smileu-code-skill` otherwise. The editor's terminal therefore needs Node.js, and npx needs network access the first time it runs.
+
+Skills also work without the command. When you ask for a UI component, a security review or a README, the agent loads the skill whose description matches. You can also name one, for example "use the frontend-taste skill for this page".
 
 ## Agent personas
 
-`init` copies these personas into the agents folder of each editor you choose (`.claude/agents/`, `.cursor/agents/`, `.agent/agents/` or `.skills/agents/`):
+Claude Code and Cursor load these personas as subagents. Ask for one by name, for example "use the guardian subagent to review this change". Windsurf and Antigravity have no persona files; the same roles are described in `AGENTS.md`.
 
-| Persona | Role | Guiding rule |
+| Persona | Use it for |
+|---|---|
+| `architect` | Changes to module boundaries, schemas or interfaces; architecture decision records. |
+| `engineer` | Implementing logic, API handlers and components once the design is agreed. |
+| `craft` | UI components, layout, styling and animation. |
+| `guardian` | Reviewing input handling, authentication, secrets, shell commands and dependencies. |
+| `editor` | Documentation, README files, commit messages and pull request descriptions. |
+| `orchestrator` | Splitting a large request into tasks for the other personas. |
+| `sparc-coder` | Self-contained logic units. |
+| `tester` | Unit, regression and integration tests. |
+| `impeccable-asset-producer` | Reusable image assets cut from approved Impeccable mockups. |
+| `impeccable-documenter` | Writing `DESIGN.md` from a finished Impeccable build. |
+| `impeccable-finish-reviewer` | A final review of alignment, rhythm and type scale. |
+| `impeccable-manual-edit-applier` | Applying copy edits made in Impeccable's live mode to the source. |
+
+## Command reference
+
+| Command | What it does | Exit code |
 |---|---|---|
-| `architect` | Lead system architect | Reads `PRODUCT.md` and the dependency graph first; records decisions as ADRs. |
-| `engineer` | Feature engineer | Strict typing, explicit error handling, no unhandled promise rejections. |
-| `craft` | Design and motion specialist | No template UI; 200ms `ease-out` to enter, 150ms `ease-in` to exit. |
-| `guardian` | Security guardian | No shell string concatenation; validates input with schemas; keeps credentials out of code. |
-| `editor` | Prose editor | Removes stock AI phrasing from docs, commits and PR descriptions. |
-| `orchestrator` | Swarm lead | Splits feature requests into SPARC tasks across the other personas. |
-| `sparc-coder` | Implementation | Implements pure logic units without architectural side effects. |
-| `tester` | Test specialist | Builds unit, regression and integration tests. |
-| `impeccable-asset-producer` | Visual assets | Produces UI assets and SVGs. |
-| `impeccable-documenter` | Design system documentation | Writes component specifications in `DESIGN.md`. |
-| `impeccable-finish-reviewer` | Finish review | Reviews alignment, rhythm and type scale before release. |
-| `impeccable-manual-edit-applier` | Targeted edits | Applies small edits without disturbing surrounding code. |
+| `init [editor]` | Install skills, personas, project documents and editor files. The default command. | 1 if anything failed |
+| `add <skill...>` | Install skills by name. Names must match exactly; `list --all` shows them. | 1 if a skill was not found |
+| `update` | Refresh installed skills and personas. | 1 if nothing is installed, `--check` cannot reach npm or GitHub, or an old copy could not be removed |
+| `audit` | Scan for hardcoded secrets, `eval()`, `new Function()` and unsafe shell commands, and run `npm audit`. See below. | 1 on critical or high findings |
+| `craft` | Flag pure `#000` black, `bounce` or `elastic` easing and nested `card` classes in CSS, HTML, JSX, TSX, Vue and Svelte files. | 0 |
+| `humanize` | Flag common stock AI phrases in Markdown files. | 0 |
+| `graph` | Build a file and import graph of the project. | 0 |
+| `run-all` | Create missing project documents, then run `graph`, `craft`, `audit` and `humanize`. | 1 if a step failed or `audit` found critical or high findings |
+| `grill` | Ask 5 questions in the terminal and write `PRODUCT.md` and `CONTEXT.md`. Answers can be piped in, one per line. | 2 if input ends early |
+| `swarm "<task>"` | Save a checklist for five roles to `.smileu/tasks/`. | 2 without a task |
+| `motion [preset]` | Print CSS, Tailwind and Framer Motion easing for `enter`, `exit`, `hover` or `modal`. | 2 for an unknown preset |
+| `doctor` | Show which of Node.js, Git, Python, uv and Graphify are available. | 0 |
+| `setup-tools` | Install Graphify with uv, or with pip when uv is missing. | 1 if the install failed |
+| `list [--all] [filter]` | List the core skills, or every skill name that contains the filter. | 1 if nothing matches |
+| `repos` | List the open-source projects the library draws on. | 0 |
 
----
+Aliases: `install` for `init`, `align` for `grill`, `secure` for `audit`, `polish` for `craft`, `pipeline` for `run-all`.
 
-## Upstream projects
+### What audit checks
 
-Smileu includes material from these projects (run `smileu repos` for the list in your terminal):
+`audit` reads JavaScript, TypeScript, JSON, YAML and TOML files, `.env` files, `.npmrc` and `.pypirc`, and looks for credential patterns such as API keys, tokens and private keys. In JavaScript and TypeScript files it also flags `eval()`, `new Function()`, child process calls with a `shell` option and commands built from strings. When the project has a `package.json`, it runs `npm audit`.
 
-| Project | Author | What Smileu uses |
+It is a pattern scan, not a full OWASP Top 10 review, and it does not read other languages such as Python or Go. It skips folders named `test`, `tests`, `__tests__`, `__mocks__`, `fixtures`, `node_modules`, `dist`, `build`, `coverage`, `vendor` and `skills`, and every folder whose name starts with a dot except `.github`. Reports name the file and the kind of secret, never the secret itself.
+
+### Options for init and add
+
+| Option | Effect |
+|---|---|
+| `-e, --editor <name>` | `claude`, `cursor`, `windsurf`, `antigravity`, `universal` or `all`. Same as `init <name>`. |
+| `--core` | Install the core set instead of the full library. |
+| `--latest` | Install from the current library on GitHub instead of the copy in the package. Needs Git and network access; if the download fails, the bundled copy is used and a warning is printed. |
+| `--force` | Replace persona files that already exist. |
+| `--dry-run` | Show what would be written without writing anything. |
+| `-y, --yes` | Skip the questions and use the defaults. |
+
+### Options for update
+
+| Option | Effect |
+|---|---|
+| `-e, --editor <name>` | Update only that editor's folders. |
+| `--latest` | Update from the current library on GitHub. |
+| `--include-new` | Also install every library skill the project does not have yet. On a core install, this adds the rest of the library. |
+| `--remove-old-layout` | Remove copies that versions 1.1.1 and earlier left in `.cursor/rules/`, `.agent/` and `.skills/`. |
+| `--check` | Report whether a newer release exists. Changes nothing. |
+| `--dry-run` | Show what would change without writing anything. |
+
+### Global options and output
+
+| Option | Effect |
+|---|---|
+| `-h, --help` | Print the help. |
+| `-v, --version` | Print the version. |
+| `--no-color` | Turn off color. The `NO_COLOR` environment variable does the same. |
+
+Exit code 0 means success, 1 means the command failed or found a blocking problem, and 2 means the command was used incorrectly. Warnings and errors are printed to stderr. Because `audit` exits 1 on critical or high findings, you can use it to fail a CI job.
+
+## Keeping skills up to date
+
+| Goal | Command |
+|---|---|
+| Refresh installed skills and personas | `npx smileu-code-skill update` |
+| Refresh from the current library on GitHub | `npx smileu-code-skill update --latest` |
+| Add every library skill the project does not have yet | `npx smileu-code-skill update --include-new` |
+| Preview the changes | `npx smileu-code-skill update --dry-run` |
+| Check for a newer release of the CLI | `npx smileu-code-skill update --check` |
+
+`update` rewrites every installed skill file and persona file that differs from the library, so your edits to those files are replaced; run it with `--dry-run` first if you changed them. Persona files you deleted stay deleted, and with `--editor` only that editor's folders are written. Files you added inside a skill folder are kept, and project documents and rule files are not touched.
+
+## Upgrading from version 1.1.1 or earlier
+
+Earlier versions put skills in folders that Cursor and Windsurf do not read, and did not install the `/smileu` command. To move a project to the current layout, install for your editor and then remove the old copies:
+
+```bash
+npx smileu-code-skill@latest init cursor
+```
+
+```bash
+npx smileu-code-skill@latest update --remove-old-layout
+```
+
+| Old location | New location |
+|---|---|
+| `.cursor/rules/<skill>/` | `.agents/skills/<skill>/` |
+| `.agent/skills/` | `.agents/skills/` |
+| `.skills/` | `.agents/skills/` |
+| `.agent/agents/`, `.skills/agents/` | none: Windsurf, Antigravity and other agents no longer get persona files |
+| `.cursorrules` | `.cursor/rules/smileu.mdc` |
+| `.windsurfrules` | `.windsurf/rules/smileu.md` |
+
+`--remove-old-layout` removes only skill folders and persona files whose content identifies them as Smileu copies, then deletes old folders that are left empty. A file or folder that merely shares its name with a Smileu skill or persona is kept and listed, and your own rules and skills in those folders stay. Add `--dry-run` to see how many copies it would remove from each folder, and `--editor <name>` to check only that editor's old folders. `.cursorrules` and `.windsurfrules` are never deleted, because many teams edit them; remove them yourself if they contain only the old Smileu rules.
+
+Projects installed only for Claude Code already use the right folders. Run `npx smileu-code-skill@latest init claude` once to add the `/smileu` command.
+
+## Uninstalling
+
+`.smileu/manifest.json` lists every skill Smileu installed; read it before you delete `.smileu/`. Check whether a folder also holds your own files before you delete it.
+
+| What | Where |
+|---|---|
+| Skills | the skill folders in `.claude/skills/` and `.agents/skills/` |
+| Personas | the 12 persona files in `.claude/agents/` and `.cursor/agents/` |
+| Editor files | `.cursor/rules/smileu.mdc`, `.windsurf/rules/smileu.md`, `.windsurf/workflows/smileu.md`, `.agents/rules/smileu.md` |
+| Output | the `.smileu/` folder, and the `.smileu/` entry with its comment line in `.gitignore` |
+| Project documents | `PRODUCT.md`, `CONTEXT.md`, `DESIGN.md`, `AGENTS.md`, `CLAUDE.md` and `docs/adr/0001-unified-vibe-coding-harness.md`, if you did not make them your own |
+
+If you installed the command globally:
+
+```bash
+npm uninstall -g smileu-code-skill
+```
+
+## Troubleshooting
+
+### `smileu: command not found`
+
+`npx smileu-code-skill` does not install the `smileu` command. Either keep using `npx smileu-code-skill <command>`, or install it with `npm install -g smileu-code-skill`.
+
+If `smileu` is still not found after a global install, npm's global folder is not on your `PATH`. Run `npm prefix -g`: on Windows add that folder to `PATH`, on macOS and Linux add its `bin` subfolder. Then open a new terminal.
+
+### `/smileu` does not appear in the editor
+
+1. Reload the editor window, or restart the editor.
+2. Check that the install was for this editor. Claude Code needs `.claude/skills/smileu/`. Cursor and Antigravity need `.agents/skills/smileu/`. Windsurf needs `.windsurf/workflows/smileu.md` and `.agents/skills/smileu/`. If something is missing, run `init` with the editor's name.
+3. Make sure the project folder you opened is the one you installed into.
+4. Update the editor. Skill and command support requires a recent version.
+
+### Skills do not load in Cursor or Windsurf after an earlier install
+
+Versions 1.1.1 and earlier used folders these editors do not read. See [Upgrading from version 1.1.1 or earlier](#upgrading-from-version-111-or-earlier).
+
+### Some security skills are missing
+
+A few security skills contain detection rules and sample commands for malware analysis, and antivirus software such as Microsoft Defender can quarantine those files.
+
+- If the antivirus removed a skill's `SKILL.md` from the downloaded package, the install skips that skill without a message, and `list` counts fewer than 890 skills.
+- If it blocks a file during the copy, the install names the skill that failed.
+
+Restore the files from quarantine or allow them in your antivirus, then run `npx smileu-code-skill add <skill-name>`, or skip those skills if you do not need them.
+
+### `init` stops with "No install scope given and no terminal to ask"
+
+`init` was started without a terminal, as happens in CI. Pass an editor name, `--core` or `-y`, for example `npx smileu-code-skill init claude --core`.
+
+### npx asks "Need to install the following packages ... Ok to proceed?"
+
+Answer `y`, or run `npx --yes smileu-code-skill <command>` to skip the question.
+
+### `graph` says it uses the built-in scanner
+
+Graphify is not installed. Run `npx smileu-code-skill doctor` to see what is missing, and `npx smileu-code-skill setup-tools` to install Graphify, which needs Python or uv. The built-in scanner reads JavaScript, TypeScript, JSON and Markdown files and lists the import paths each one uses.
+
+## Skill library
+
+The library holds 890 skills. `npx smileu-code-skill list --all` prints every name, and `list --all <word>` filters them, for example `list --all docker`.
+
+Every install includes these two skills:
+
+| Skill | Purpose |
+|---|---|
+| `smileu` | The `/smileu` command. |
+| `smileu-code-skill` | The main guidelines: the six phases and the rules for design, security and writing. |
+
+The core set (`--core`) adds:
+
+| Skill | Covers |
+|---|---|
+| `engineering-alignment` | Clarifying questions, the domain dictionary and architecture decision records. |
+| `codebase-knowledge-graph` | Reading the project's structure and spotting oversized modules. |
+| `frontend-taste` | Typography, color and layout without generic AI templates. |
+| `design-craft-impeccable` | Design craft, `PRODUCT.md` and `DESIGN.md`. |
+| `motion-physics` | Easing curves, spring motion and interaction timing. |
+| `agent-orchestration` | Splitting work across roles with the SPARC workflow. |
+| `humanizer-writing` | Plain writing without stock AI phrasing. |
+| `cybersecurity-hardening` | OWASP Top 10 defenses, input validation and secret handling. |
+
+Most of the rest of the full library is security skills (818 of them), covering areas such as threat hunting, incident response, cloud and container security, malware analysis and compliance.
+
+## Credits
+
+The library draws on these open-source projects. `npx smileu-code-skill repos` prints the same list.
+
+| Project | Author | Used for |
 |---|---|---|
-| [mattpocock/skills](https://github.com/mattpocock/skills) | Matt Pocock | Grilling sessions, domain vocabulary (`CONTEXT.md`), ADRs, TDD. |
-| [Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify) | Graphify Labs | Codebase graph extraction. |
-| [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) | Leonxlnx | Frontend taste: type scales, 4px/8px grids, colour palettes. |
-| [ruvnet/ruflo](https://github.com/ruvnet/ruflo) | rUv | Multi-agent swarms and the SPARC workflow. |
-| [pbakaus/impeccable](https://github.com/pbakaus/impeccable) | Paul Bakaus | `PRODUCT.md`, `DESIGN.md` and design craft commands. |
-| [emilkowalski/skills](https://github.com/emilkowalski/skills) | Emil Kowalski | Motion timing and easing for entering and exiting elements. |
-| [blader/humanizer](https://github.com/blader/humanizer) | Blader | Writing patterns to avoid. The `humanize` command checks 8 of the most common. |
-| [mukul975/Anthropic-Cybersecurity-Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) | Mukul | Security skills; 818 of the 889 bundled skills come from here. |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | Matt Pocock | Grilling sessions, `CONTEXT.md`, architecture decision records, TDD |
+| [Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify) | Graphify Labs | Codebase graphs |
+| [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) | Leonxlnx | Frontend taste: type scales, spacing grids, color |
+| [ruvnet/ruflo](https://github.com/ruvnet/ruflo) | rUv | Multi-agent roles and the SPARC workflow |
+| [pbakaus/impeccable](https://github.com/pbakaus/impeccable) | Paul Bakaus | `PRODUCT.md`, `DESIGN.md` and design craft |
+| [emilkowalski/skills](https://github.com/emilkowalski/skills) | Emil Kowalski | Motion timing and easing |
+| [blader/humanizer](https://github.com/blader/humanizer) | Blader | Writing patterns to avoid |
+| [mukul975/Anthropic-Cybersecurity-Skills](https://github.com/mukul975/Anthropic-Cybersecurity-Skills) | Mukul | Security skills |
 
----
+## Security, changelog and license
 
-## In-editor prompts
-
-After `init`, you can ask your assistant to follow a phase directly:
-
-- `/smileu align`: run a grilling session and settle the domain vocabulary.
-- `/smileu graph`: map the codebase and its import dependencies.
-- `/smileu swarm "<task>"`: split a feature into SPARC tasks across the five core personas.
-- `/smileu craft`: write or review frontend components against the design rules.
-- `/smileu polish`: tighten type hierarchy, spacing, micro-interactions and contrast.
-- `/smileu secure`: review code for injection points, hardcoded secrets and unsafe calls.
-- `/smileu humanize`: edit docs, commit messages and PR descriptions to remove stock phrasing.
-- `/smileu all`: go through all six phases in order.
-
----
-
-## Repository structure
-
-```text
-smileu-code-skill-agents/
-├── .github/
-│   └── workflows/
-│       ├── ci.yml                 # Tests on Linux, Windows, macOS x Node 18/20/22
-│       ├── codeql.yml             # CodeQL code scanning
-│       └── release.yml            # Tag, GitHub Release and package publish
-├── bin/cli.js                     # Executable entry point
-├── src/
-│   ├── cli.js                     # Command router and option parsing
-│   ├── config.js                  # Skill catalog, editor layouts, repository names
-│   ├── installer.js               # Skill, persona and template installation
-│   ├── ui.js                      # Terminal output (colour, stdout/stderr)
-│   ├── index.js                   # Library entry
-│   ├── utils/
-│   │   ├── manifest.js            # .smileu/manifest.json
-│   │   ├── output.js              # .smileu/ folders and .gitignore entry
-│   │   └── semver.js              # Version parsing, bumping and comparison
-│   └── tools/
-│       ├── update.js              # smileu update and update --check
-│       ├── source.js              # Bundled library or --latest clone
-│       ├── grill.js               # Alignment questions
-│       ├── graphify.js            # Graphify runner and built-in import scanner
-│       ├── swarm.js               # Five-role task plans
-│       ├── motion.js              # Easing presets
-│       ├── design.js              # UI anti-pattern scan
-│       ├── security.js            # Secret, unsafe call and npm audit scan
-│       ├── humanizer.js           # AI phrase scan
-│       ├── doctor.js              # Tool detection and Graphify install
-│       └── pipeline.js            # run-all
-├── scripts/
-│   ├── release.js                 # Cut a release: bump, stamp changelog, commit, tag
-│   ├── release-notes.js           # Print a version's CHANGELOG section
-│   └── lib/changelog.js           # Keep a Changelog parser and stamper
-├── skills/                        # 889 skills
-├── templates/                     # Project templates and the 12 agent personas
-├── docs/adr/                      # Architecture decision records
-├── test/
-│   ├── cli.test.js                # Commands, options and exit codes
-│   ├── sandboxes.test.js          # End-to-end workspaces (install, update, audit, grill)
-│   ├── release.test.js            # Versioning, changelog and release scripts
-│   └── update.test.js             # update, release check and manifest units
-├── AGENTS.md, ARCHITECTURE.md, CHANGELOG.md, CONTEXT.md, DESIGN.md, PRODUCT.md, SECURITY.md
-├── package.json
-└── LICENSE
-```
-
----
-
-## Releases and publishing
-
-Versions follow [Semantic Versioning](https://semver.org/), and every release has a section in [CHANGELOG.md](CHANGELOG.md) in [Keep a Changelog](https://keepachangelog.com/) format. Write entries under `## [Unreleased]` as you work; cutting a release moves them into a dated version section.
-
-Releasing never creates commits or pull requests on its own. The version bump is a commit you make; GitHub Actions only adds the `vX.Y.Z` tag, creates the GitHub Release with notes from the changelog, and publishes the package: `@nazalilis/smileu-code-skill-agents` to GitHub Packages, and `smileu-code-skill` to npm when an `NPM_TOKEN` secret is configured.
-
-#### 1. Choose the release type and cut it locally
-Preview first, then cut the release. The script runs the tests, bumps `package.json`, moves `[Unreleased]` into a dated section, commits and tags:
-```bash
-npm run release:dry -- minor
-```
-```bash
-npm run release:minor
-```
-Other types: `npm run release` (patch), `npm run release:major`, `npm run release:pre -- --preid rc`, or `node scripts/release.js 2.0.0`. The script refuses to run on a dirty tree, off `main`, with an empty `[Unreleased]` section, or when the tag already exists.
-
-#### 2. Push
-```bash
-git push origin main --follow-tags
-```
-The push that changes the version in `package.json` (or the new `vX.Y.Z` tag) starts the release. Pushes that change `package.json` without changing the version do not release anything.
-
-#### 3. Retry or preview from GitHub
-**Actions → Release & Publish Package → Run workflow** releases the version already in `package.json`. Tick **dry run** to only see the plan.
-
-#### What happens automatically
-
-- Re-running a release is safe: an existing GitHub Release is updated in place, and a version that is already on the registry is skipped.
-- Prerelease versions (`1.2.0-rc.0`) are marked as pre-releases on GitHub and published with the `next` dist-tag, so `@latest` stays on the last stable version.
-- Users pick up new skills with `smileu update --latest --include-new` and new CLI versions with `smileu update --check`.
-
-#### One-time setup for publishing to npm
-
-`npx smileu-code-skill` works only after the package is on the public npm registry. For that the workflow needs:
-
-1. An npm account at [npmjs.com](https://www.npmjs.com/).
-2. An npm access token that is allowed to publish new packages (npmjs.com, then **Access Tokens**, then **Generate New Token**).
-3. That token saved as a repository secret named `NPM_TOKEN` (**Settings → Secrets and variables → Actions → New repository secret**).
-
-Without `NPM_TOKEN`, the workflow still creates the GitHub Release and publishes to GitHub Packages, and the run summary says that npm was skipped. To publish under a different npm name, add a repository variable named `NPM_PACKAGE_NAME`.
-
-#### Repository settings
-
-- Under **Settings → Actions → General → Workflow permissions**, workflows must be allowed to request write access. The workflow asks for `contents: write` and `packages: write` itself.
-- The workflow never pushes commits, so branch protection on `main` does not get in its way. It only pushes the release tag.
-- In a private repository, the GitHub Release and the GitHub Packages package are private as well. The npm package is public and contains the full source code.
-
----
-
-## License
-
-MIT License © 2026 Smileu
+- Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+- Changes in each release are listed in [CHANGELOG.md](CHANGELOG.md) and on the [Releases page](https://github.com/nazalilis/smileu-code-skill-agents/releases).
+- MIT License © 2026 Smileu. See [LICENSE](LICENSE).

@@ -22,7 +22,7 @@ export function runSwarmDecomposition(task, targetDir = process.cwd()) {
         role: 'Lead Architect (@architect)',
         mission: 'Define system interfaces, schema boundaries, and the dependency graph.',
         actions: [
-          'Read .smileu/graph/graph.json (run "smileu graph" first) to trace the blast radius.',
+          'Read .smileu/graph/graph.json (create it with the graph command, or /smileu graph) to trace the blast radius.',
           `Draft data contracts and interface types for "${task}".`,
           'Record non-obvious design choices in docs/adr/ when needed.'
         ]

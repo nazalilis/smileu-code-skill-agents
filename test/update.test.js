@@ -242,14 +242,15 @@ test('detectInstalledSkills finds skill folders per editor layout, merging share
   const ws = tempDir();
   writeFile(path.join(ws, '.claude', 'skills', 'beta', 'SKILL.md'), 'beta\n');
   writeFile(path.join(ws, '.claude', 'skills', 'not-a-skill', 'readme.txt'), 'no SKILL.md here\n');
-  writeFile(path.join(ws, '.agent', 'skills', 'alpha', 'SKILL.md'), 'alpha\n');
+  writeFile(path.join(ws, '.agents', 'skills', 'alpha', 'SKILL.md'), 'alpha\n');
+  writeFile(path.join(ws, '.cursor', 'rules', 'gamma', 'SKILL.md'), 'old location, not read by any editor\n');
 
   const targets = detectInstalledSkills(ws);
   assert.deepEqual(
-    targets.map((t) => [t.skillsDir, t.editors, t.skills]),
+    targets.map((t) => [t.skillsDir, t.editors, t.agentsDirs, t.skills]),
     [
-      ['.claude/skills', ['claude'], ['beta']],
-      ['.agent/skills', ['antigravity', 'windsurf'], ['alpha']]
+      ['.claude/skills', ['claude'], ['.claude/agents'], ['beta']],
+      ['.agents/skills', ['cursor', 'windsurf', 'antigravity', 'universal'], ['.cursor/agents'], ['alpha']]
     ]
   );
 });

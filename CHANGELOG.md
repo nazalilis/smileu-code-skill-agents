@@ -9,6 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`/smileu <phase>` in every supported editor.** The new `smileu` skill, installed with
+  every install, runs a phase (`align`, `graph`, `swarm`, `craft`, `polish`, `secure`,
+  `humanize`, `motion`, `all`, `update`, `doctor`) and the CLI commands behind it. Windsurf
+  also gets `.windsurf/workflows/smileu.md`, so the command appears there too.
+- **Editor rule files in the formats the editors read:** `.cursor/rules/smileu.mdc`
+  (always applied), `.windsurf/rules/smileu.md` (always on) and `.agents/rules/smileu.md`
+  for Antigravity.
+- **`update --remove-old-layout`** removes the Smileu copies that earlier versions put in
+  `.cursor/rules/`, `.agent/` and `.skills/`. Copies are recognised by their content, so
+  a file or folder that only shares a name with a Smileu skill or persona is kept and
+  listed, as is every other file in those folders. With `--editor`, only that editor's
+  old folders are checked. `init` and `update` point out such copies when they find them.
+- After an install through npx, the CLI explains that no `smileu` command was installed and
+  how to install one.
+
+### Changed
+- **Skill folders:** Cursor, Windsurf, Antigravity and other agents now share
+  `.agents/skills/`, which all of them read. Cursor personas go to `.cursor/agents/`.
+  Installing for every editor writes two skill folders (`.claude/skills` and
+  `.agents/skills`) instead of four.
+- Windsurf and Antigravity no longer receive persona files, because they cannot load them.
+- Hints and next steps show the command the way the CLI was started:
+  `npx smileu-code-skill <command>` after npx, `pnpm dlx` or `bunx`, and after a
+  project-local install run through an npm script; `smileu <command>` after a global install.
+- `update` refreshes only persona files that are already installed, in the folders of the
+  editors being updated. Persona files you deleted stay deleted, and `update -e windsurf`
+  no longer writes to `.cursor/agents/`.
+- `run-all` creates missing project documents only, not editor files.
+- The README covers installation and use only.
+- The npm package no longer includes the repository's own planning documents.
+
+### Fixed
+- `smileu: command not found` after `npx smileu-code-skill init`. The CLI told users to type
+  `smileu`, which only exists after a global install.
+- Cursor did not load the installed skills: they were written to
+  `.cursor/rules/<skill>/SKILL.md`, and Cursor only reads `.mdc` rule files there. Windsurf
+  did not load them either, because they were written to `.agent/skills/`.
+- `/smileu align` and the other phases were documented, but no editor had a command for them.
+- The `architect`, `craft`, `editor`, `engineer` and `guardian` personas had no frontmatter,
+  so Claude Code and Cursor ignored them.
+- `add` with only unknown skill names still copied the always-installed skills and wrote
+  `.smileu/manifest.json` before reporting the error. It now writes nothing.
+- The install summary, help and interactive picker said the core set has 9 skills; it
+  installs 10.
+- `CLAUDE.md` now imports `AGENTS.md`, which Claude Code does not read on its own, and the
+  Antigravity rule file declares `trigger: always_on`.
+
 ---
 
 ## [1.1.1] - 2026-09-13

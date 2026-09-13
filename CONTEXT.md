@@ -23,4 +23,4 @@
 - `src/config.js`: Catalogs of skills, upstream repositories, and editor mappings.
 - `src/installer.js`: Core file copying and project initialization engine.
 - `skills/`: The master and component skill definitions.
-- `templates/`: Project configuration templates (`PRODUCT.md`, `CONTEXT.md`, `DESIGN.md`, `.cursorrules`, `CLAUDE.md`).
+- `templates/`: Project configuration templates (`PRODUCT.md`, `CONTEXT.md`, `DESIGN.md`, `AGENTS.md`, `CLAUDE.md`, per-editor rule and command files in `templates/editors/`, and agent personas).

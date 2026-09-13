@@ -137,44 +137,78 @@ export const SKILLS_CATALOG = [
   }
 ];
 
-// Per-editor install layout: where skills, agent personas, and the root rules
-// file live for each supported AI coding tool.
+// The `/smileu <phase>` command. It is a skill so every supported editor can
+// invoke it by folder name, and it is always installed with the master skill.
+export const COMMAND_SKILL_ID = 'smileu';
+export const ALWAYS_INSTALLED_SKILLS = [MASTER_SKILL_ID, COMMAND_SKILL_ID];
+
+// How many skills `--core` installs: the catalog plus the always-installed skills.
+export const CORE_SKILL_COUNT = new Set([...ALWAYS_INSTALLED_SKILLS, ...SKILLS_CATALOG.map((s) => s.dir)]).size;
+
+// Per-editor install layout, matching the folders each tool reads:
+// - skills:  folder of <skill>/SKILL.md packages
+// - agents:  folder of subagent persona files, or null when the tool has none
+// - files:   editor-specific rule and command files, copied from templates/
+//            only when they do not exist yet
+//
+// Cursor, Windsurf and Antigravity all read the shared `.agents/skills` folder,
+// so installing for several of them writes the library once. Claude Code only
+// reads `.claude/skills`, so an install that includes Claude writes a second
+// copy; Cursor reads both folders and can then list each skill twice.
 export const EDITOR_TARGETS = {
   claude: {
     label: 'Claude Code',
     skills: '.claude/skills',
     agents: '.claude/agents',
-    rules: 'CLAUDE.md'
+    files: [{ template: 'CLAUDE.md', dest: 'CLAUDE.md' }]
   },
   cursor: {
     label: 'Cursor IDE',
-    skills: '.cursor/rules',
+    skills: '.agents/skills',
     agents: '.cursor/agents',
-    rules: '.cursorrules'
-  },
-  antigravity: {
-    label: 'Antigravity / Gemini CLI',
-    skills: '.agent/skills',
-    agents: '.agent/agents',
-    rules: null
+    files: [{ template: 'editors/cursor-rule.mdc', dest: '.cursor/rules/smileu.mdc' }]
   },
   windsurf: {
     label: 'Windsurf',
-    skills: '.agent/skills',
-    agents: '.agent/agents',
-    rules: '.windsurfrules'
+    skills: '.agents/skills',
+    agents: null,
+    files: [
+      { template: 'editors/windsurf-rule.md', dest: '.windsurf/rules/smileu.md' },
+      { template: 'editors/windsurf-workflow.md', dest: '.windsurf/workflows/smileu.md' }
+    ]
+  },
+  antigravity: {
+    label: 'Antigravity',
+    skills: '.agents/skills',
+    agents: null,
+    files: [{ template: 'editors/antigravity-rule.md', dest: '.agents/rules/smileu.md' }]
   },
   universal: {
-    label: 'Universal Markdown (.skills/)',
-    skills: '.skills',
-    agents: '.skills/agents',
-    rules: null
+    label: 'Other agents (.agents/skills)',
+    skills: '.agents/skills',
+    agents: null,
+    files: []
   }
 };
 
-// Which concrete editors `--editor all` expands to. Windsurf shares the
-// `.agent` layout with Antigravity, so it is covered without duplication.
-export const ALL_EDITORS = ['claude', 'cursor', 'antigravity', 'universal'];
+// Which editors `--editor all` expands to. `universal` uses the same skills
+// folder as Cursor, Windsurf and Antigravity, so it adds nothing here.
+export const ALL_EDITORS = ['claude', 'cursor', 'windsurf', 'antigravity'];
+
+// Where versions 1.1.1 and earlier put files that the editors do not read, and
+// which editor each location belonged to. `update --remove-old-layout` removes
+// the Smileu copies found there.
+export const LEGACY_LOCATIONS = [
+  { dir: '.cursor/rules', kind: 'skills', editors: ['cursor'] },
+  { dir: '.agent/skills', kind: 'skills', editors: ['windsurf', 'antigravity'] },
+  { dir: '.skills', kind: 'skills', editors: ['universal'] },
+  { dir: '.agent/agents', kind: 'agents', editors: ['windsurf', 'antigravity'] },
+  { dir: '.skills/agents', kind: 'agents', editors: ['universal'] }
+];
+export const LEGACY_RULE_FILES = [
+  { file: '.cursorrules', editors: ['cursor'] },
+  { file: '.windsurfrules', editors: ['windsurf'] }
+];
 
 export function resolveEditors(editor = 'all') {
   if (editor === 'all') return [...ALL_EDITORS];

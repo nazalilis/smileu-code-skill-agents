@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { logSuccess, logInfo, logNotice, logError, logHeading } from '../ui.js';
+import { CLI } from '../utils/invocation.js';
 
 /**
  * Runs a command without a shell and reports whether it exited 0, plus its
@@ -74,7 +75,7 @@ export function printDoctorReport() {
   if (status.graphify) {
     logSuccess(`Graphify  ${status.graphifyMethod === 'direct' ? 'found on PATH' : 'available through uv'}`);
   } else {
-    logNotice('Graphify  not found. Run "smileu setup-tools" to install it, or keep using the built-in scanner.');
+    logNotice(`Graphify  not found. Run "${CLI} setup-tools" to install it, or keep using the built-in scanner.`);
   }
 
   console.log('');

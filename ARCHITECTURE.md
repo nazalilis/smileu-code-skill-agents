@@ -12,7 +12,7 @@ smileu <command>  (bin/cli.js)
        ▼
 [ src/cli.js ] ─── option parsing, exit codes, command routing
        │
-       ├─► init / add ──► src/installer.js ──► .claude/, .cursor/, .agent/, .skills/ + templates
+       ├─► init / add ──► src/installer.js ──► .claude/, .agents/, .cursor/, .windsurf/ + templates
        │                  src/tools/source.js (bundled library or --latest clone)
        │                  src/utils/manifest.js (.smileu/manifest.json)
        │

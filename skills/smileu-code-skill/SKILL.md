@@ -1,132 +1,133 @@
 ---
 name: smileu-code-skill
-description: "The ultimate unified vibe coding super-skill combining engineering alignment, knowledge graphs, anti-slop design taste, impeccable craft, UI motion physics, agent swarms, humanized writing, and cybersecurity hardening."
+description: "Engineering, design, security and writing guidelines for this project, organised in six phases: align, map, orchestrate, craft, secure and humanize. Use when planning or building a feature, reviewing UI, hardening code, or writing docs and commit messages."
 ---
 
-# Smileu Code Skill (The Master Vibe Coding Meta-Skill)
+# Smileu Code Skill
 
-**Smileu Code Skill** is the unified intelligence layer for AI agents and developers. It merges the finest principles from 8 premier engineering and design frameworks into an unstoppable, end-to-end development pipeline:
+These guidelines combine principles from eight open-source projects:
 
-1. **Engineering Rigor** (Matt Pocock) — Grilling sessions, ubiquitous domain dictionary (`CONTEXT.md`), and Architecture Decision Records (`ADR`).
-2. **Knowledge Graph Architecture** (Graphify) — Codebase dependency topology, god-node detection, and GraphRAG context mapping.
-3. **Anti-Slop Frontend Taste** (Taste Skill) — Premium typography, visual restraint, hierarchy, and refusal of generic AI templates.
-4. **Impeccable Design Craft** (Impeccable) — Durable product truth (`PRODUCT.md`), design system specs (`DESIGN.md`), and 23 precision commands.
-5. **UI Motion Physics** (Emil Kowalski) — Natural easing curves, spring dynamics, micro-interactions, and intentional transitions.
-6. **Agent Swarm Orchestration** (Ruflo) — Multi-agent roles, task decomposition, SPARC workflows, and self-learning feedback loops.
-7. **Humanized Communication** (Humanizer) — Zero AI boilerplate, zero fake drama, elimination of 25 synthetic writing tells.
-8. **Cybersecurity Hardening** (Anthropic Cybersecurity Skills) — OWASP Top 10 mitigation, threat modeling, and defense-in-depth security gates.
+1. **Engineering rigor** (Matt Pocock): grilling sessions, a domain dictionary (`CONTEXT.md`) and Architecture Decision Records.
+2. **Codebase mapping** (Graphify): dependency structure and oversized "god" modules.
+3. **Frontend taste** (Taste Skill): typography, visual restraint and hierarchy instead of generic AI templates.
+4. **Design craft** (Impeccable): product truth (`PRODUCT.md`) and design system notes (`DESIGN.md`).
+5. **UI motion** (Emil Kowalski): easing curves, spring dynamics and micro-interaction timing.
+6. **Agent orchestration** (Ruflo): role-based task decomposition and the SPARC workflow.
+7. **Plain writing** (Humanizer): no chatbot filler or stock phrasing.
+8. **Security hardening** (Anthropic Cybersecurity Skills): OWASP Top 10 defenses and secret hygiene.
 
 ---
 
-## The Smileu 6-Phase Pipeline
+## The six phases
 
-Whenever you are tasked with building, refactoring, or designing a feature, follow these 6 phases:
+When building, refactoring or designing a feature, work through these phases in order:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ 1. ALIGN & CLARIFY  │ Grill intent, document domain & product   │
+│ 1. ALIGN & CLARIFY  │ Question intent, document domain & product│
 ├─────────────────────┼───────────────────────────────────────────┤
-│ 2. ARCHITECT & MAP  │ Analyze graph, map god nodes, write ADR   │
+│ 2. ARCHITECT & MAP  │ Read the graph, find god nodes, write ADR │
 ├─────────────────────┼───────────────────────────────────────────┤
-│ 3. ORCHESTRATE      │ Decompose into tasks, coordinate swarms   │
+│ 3. ORCHESTRATE      │ Split into tasks and roles                │
 ├─────────────────────┼───────────────────────────────────────────┤
-│ 4. CRAFT & POLISH   │ Anti-slop UI, spring motion, design craft │
+│ 4. CRAFT & POLISH   │ Restrained UI, deliberate motion          │
 ├─────────────────────┼───────────────────────────────────────────┤
-│ 5. HARDEN & SECURE  │ OWASP gates, input validation, no secrets │
+│ 5. HARDEN & SECURE  │ OWASP defenses, input validation, secrets │
 ├─────────────────────┼───────────────────────────────────────────┤
-│ 6. HUMANIZE         │ Clear natural tone, no robot boilerplate  │
+│ 6. HUMANIZE         │ Plain, direct prose                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+Each phase can be run on its own with `/smileu <phase>`, which the `smileu` skill provides.
+
 ---
 
-### Phase 1: Align & Clarify (`/smileu align`)
-*Source: `mattpocock/skills` & `pbakaus/impeccable`*
+### Phase 1: Align and clarify (`/smileu align`)
+*Source: `mattpocock/skills` and `pbakaus/impeccable`*
 
 Before writing code:
-1. **Never guess ambiguous requirements.** Conduct a brief grilling session. Ask 2-3 focused, multiple-choice or direct questions about business rules, edge cases, and user expectations.
-2. **Durable Product Truth (`PRODUCT.md`):** Keep a concise record of the product's primary audience, purpose, constraints, and voice.
-3. **Ubiquitous Domain Dictionary (`CONTEXT.md`):** Use the exact domain jargon agreed upon. Never use 20 generic words when 1 precise domain term exists.
+1. **Do not guess ambiguous requirements.** Ask 2 or 3 focused questions about business rules, edge cases and user expectations.
+2. **Product truth (`PRODUCT.md`):** keep a short record of the audience, purpose, constraints and voice.
+3. **Domain dictionary (`CONTEXT.md`):** use the agreed domain terms exactly. One precise term beats a paragraph of generic words.
 
 ---
 
-### Phase 2: Architect & Map (`/smileu graph`)
-*Source: `Graphify-Labs/graphify` & `mattpocock/skills`*
+### Phase 2: Architect and map (`/smileu graph`)
+*Source: `Graphify-Labs/graphify` and `mattpocock/skills`*
 
-1. **Understand System Topology:** Inspect file relationships, imports, and component trees before modifying them.
-2. **Beware of God Nodes:** Identify oversized, tightly coupled modules and avoid adding more responsibilities to them.
-3. **Document Invariant Choices (`ADR`):** When making non-obvious technical tradeoffs (e.g. state management, schema changes, library choices), record them in an Architecture Decision Record.
+1. **Understand the structure:** inspect file relationships, imports and component trees before modifying them.
+2. **Watch for god nodes:** identify oversized, tightly coupled modules and avoid adding more responsibilities to them.
+3. **Record non-obvious choices (ADR):** when a trade-off is hard to reverse (state management, schema changes, library choices), write an Architecture Decision Record in `docs/adr/`.
 
 ---
 
-### Phase 3: Orchestrate & Decompose (`/smileu swarm`)
+### Phase 3: Orchestrate and decompose (`/smileu swarm <task>`)
 *Source: `ruvnet/ruflo`*
 
-1. **Breakdown into Specialized Roles:**
-   - **Architect/Planner**: System boundaries, interfaces, contracts.
-   - **Implementer**: Pure logic, components, APIs.
-   - **Tester/Reviewer**: Edge cases, coverage, performance.
-   - **Security Auditor**: Vulnerability scanning, sanitize input.
-2. **Verification Gates:** Each step must be verified before proceeding to the next. Never build on top of unverified assumptions.
+1. **Split the work into roles:**
+   - **Architect:** system boundaries, interfaces, contracts.
+   - **Implementer:** logic, components, APIs.
+   - **Tester and reviewer:** edge cases, coverage, performance.
+   - **Security reviewer:** vulnerability checks, input sanitisation.
+2. **Verify each step** before building the next one on top of it.
 
 ---
 
-### Phase 4: Craft, Taste & Motion (`/smileu craft`)
-*Source: `Leonxlnx/taste-skill`, `pbakaus/impeccable` & `emilkowalski/skills`*
+### Phase 4: Craft, taste and motion (`/smileu craft`, `/smileu polish`)
+*Source: `Leonxlnx/taste-skill`, `pbakaus/impeccable` and `emilkowalski/skills`*
 
-Avoid the "Generic AI Slop" look at all costs:
-1. **Typography & Hierarchy:**
-   - Avoid generic Inter-for-everything unless specifically requested. Choose distinctive font pairings with intentional line-height and letter-spacing.
-   - Keep heading levels clear; don't place generic icon rounded-rectangles above every single title.
-2. **Color & Surface:**
-   - Never use pure `#000000` or `#ffffff` for dark/light themes. Tint neutrals with 1-2% of the brand hue.
-   - Never put gray text on colored backgrounds (contrast failure).
-   - Avoid nested cards inside cards inside cards. Use subtle spacing, borders, or dividers instead.
-3. **Motion Physics:**
-   - Use `ease-out` for entering elements (they decelerate into view).
-   - Use `ease-in` for exiting elements (they accelerate out of view).
-   - Never use bouncy elastic easing for standard utility UI; it feels dated and sluggish. Keep duration between `150ms` and `250ms` for micro-interactions.
+1. **Typography and hierarchy:**
+   - Do not default to Inter everywhere unless it was requested. Choose font pairings with deliberate line height and letter spacing.
+   - Keep heading levels clear, and do not put a rounded icon square above every title.
+2. **Colour and surface:**
+   - Avoid pure `#000000` and `#ffffff` for dark and light themes. Tint neutrals with 1 to 2% of the brand hue.
+   - Do not put grey text on coloured backgrounds; it fails contrast.
+   - Avoid cards nested inside cards. Use spacing, borders or dividers instead.
+3. **Motion:**
+   - Use `ease-out` for elements entering the view.
+   - Use `ease-in` for elements leaving the view.
+   - Avoid bouncy or elastic easing for everyday UI. Keep micro-interactions between `150ms` and `250ms`.
 
 ---
 
-### Phase 5: Harden & Secure (`/smileu secure`)
+### Phase 5: Harden and secure (`/smileu secure`)
 *Source: `mukul975/Anthropic-Cybersecurity-Skills`*
 
-1. **OWASP Top 10 by Default:**
-   - Sanitize and validate all external inputs (Zod, Valibot, or schema validators).
-   - Prevent SQL Injection, XSS, SSRF, and prototype pollution.
-2. **Secrets & Credentials:**
-   - Never hardcode tokens, API keys, or private endpoints in client-side code.
-   - Enforce environment variable isolation.
-3. **Defensive Error Handling:**
-   - Fail safely. Never leak stack traces, database schemas, or sensitive error objects to the client.
+1. **OWASP Top 10 by default:**
+   - Validate all external input with a schema validator such as Zod or Valibot.
+   - Prevent SQL injection, XSS, SSRF and prototype pollution.
+2. **Secrets and credentials:**
+   - Never hardcode tokens, API keys or private endpoints in client code.
+   - Keep secrets in environment variables.
+3. **Error handling:**
+   - Fail safely. Never send stack traces, database schemas or raw error objects to the client.
 
 ---
 
-### Phase 6: Humanize Prose & Docs (`/smileu humanize`)
+### Phase 6: Humanize prose and docs (`/smileu humanize`)
 *Source: `blader/humanizer`*
 
-When writing explanations, commit messages, PR descriptions, and documentation:
-1. **Eliminate 25 AI Clichés:**
+When writing explanations, commit messages, pull request descriptions and documentation:
+1. **Avoid stock AI phrasing:**
    - NO "delve", "testament", "pivotal moment", "landscape", "showcasing", "in today's fast-paced world".
-   - NO "Not X, but Y" formulaic staging.
-   - NO forced triads ("speed, scalability, and security").
-   - NO dramatic one-line closers ("And that is where the magic happens.").
-2. **Speak with Clarity and Honesty:**
-   - State the fact directly. If you don't know something, say you don't know. Keep prose lean, direct, and human.
+   - NO "Not X, but Y" staging.
+   - NO forced lists of three ("speed, scalability, and security").
+   - NO dramatic one-line closers.
+2. **Say it plainly:** state the fact directly. If something is unknown, say so.
 
 ---
 
-## Smileu Quick Commands
+## Commands
 
-When interacting with Smileu, you can invoke these specialized modes:
+| In the editor | In a terminal | Result |
+|---|---|---|
+| `/smileu align` | `npx smileu-code-skill grill` | Clarify requirements; update `PRODUCT.md` and `CONTEXT.md` |
+| `/smileu graph` | `npx smileu-code-skill graph` | Map files and imports into `.smileu/graph/` |
+| `/smileu swarm <task>` | `npx smileu-code-skill swarm "<task>"` | Split a task across the five core roles |
+| `/smileu craft` | `npx smileu-code-skill craft` | Find and fix design anti-patterns |
+| `/smileu polish` | `npx smileu-code-skill craft` | Final pass on spacing, type, contrast and motion |
+| `/smileu secure` | `npx smileu-code-skill audit` | Find and fix security problems |
+| `/smileu humanize` | `npx smileu-code-skill humanize` | Remove stock AI phrasing from Markdown |
+| `/smileu all` | `npx smileu-code-skill run-all` | Run every phase in order |
 
-| Command | Action |
-|---|---|
-| `/smileu align` | Start grilling session & update `PRODUCT.md` / `CONTEXT.md` |
-| `/smileu graph` | Map codebase relationships, inspect imports, and check god nodes |
-| `/smileu craft` | Full UI/UX revamp with anti-slop aesthetics and motion curves |
-| `/smileu polish` | Final micro-interaction pass, spacing audit, and contrast check |
-| `/smileu secure` | Security and vulnerability audit (OWASP, input sanitization) |
-| `/smileu humanize` | Strip robot language from markdown, docs, or commit logs |
-| `/smileu all` | Run the complete 6-Phase Pipeline from start to finish |
+After `npm install -g smileu-code-skill`, `smileu <command>` works in place of `npx smileu-code-skill <command>`.

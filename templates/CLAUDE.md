@@ -2,6 +2,14 @@
 
 This project is governed by the **Smileu Code Skill** engineering, design, and security principles.
 
+## Skills and commands:
+- Skills are in `.claude/skills/` and subagent personas in `.claude/agents/`.
+- Type `/smileu` to see the phases, or `/smileu <phase>` to run one (for example `/smileu secure`).
+- Read `PRODUCT.md`, `CONTEXT.md` and `DESIGN.md` before larger changes.
+- Agent roles and the six phases, shared with other editors:
+
+@AGENTS.md
+
 ## Core Rules:
 1. **Grilling & Alignment:** Clarify ambiguous requirements first. Ask direct questions before making architectural modifications.
 2. **Domain Model:** Respect terms and invariant rules defined in `CONTEXT.md`.

@@ -3,6 +3,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { logSuccess, logInfo, logHeading } from '../ui.js';
 import { ensureOutputDir } from '../utils/output.js';
+import { CLI } from '../utils/invocation.js';
 
 const QUESTIONS = [
   { key: 'featureName', prompt: '1. Project or feature name: ', fallback: 'Core Feature' },
@@ -84,7 +85,7 @@ export async function runGrillingSession(
       if (done) {
         const err = new Error(
           `Input ended before question ${idx + 1} of ${QUESTIONS.length} was answered. ` +
-            'Run "smileu grill" in a terminal, or pipe one answer per line.'
+            `Run "${CLI} grill" in a terminal, or pipe one answer per line.`
         );
         err.code = 'SMILEU_INPUT_ENDED';
         throw err;

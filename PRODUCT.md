@@ -11,7 +11,7 @@
 ## 3. Operating Context & Constraints
 - **Platform:** Cross-platform Node.js CLI (Windows, macOS, Linux).
 - **Execution:** `npx smileu-code-skill` from npm, or `smileu` after a global install. GitHub Packages carries the same release as `@nazalilis/smileu-code-skill-agents`.
-- **Target Editors:** Cursor (`.cursor/rules`), Claude Code (`.claude/skills`, `CLAUDE.md`), Antigravity/Gemini (`.agent/skills`), Windsurf (`.windsurfrules`), Universal (`.skills/`).
+- **Target Editors:** Claude Code (`.claude/skills`, `.claude/agents`, `CLAUDE.md`), Cursor (`.agents/skills`, `.cursor/agents`, `.cursor/rules/smileu.mdc`), Windsurf (`.agents/skills`, `.windsurf/rules`, `.windsurf/workflows`), Antigravity (`.agents/skills`, `.agents/rules`), other agents (`.agents/skills`).
 - **Dependencies:** Node.js 18 or later. Two small npm dependencies (`picocolors`, `prompts`); the CLI still works without them.
 - **Updates:** Installed skills are refreshed with `smileu update`; releases are cut and published by GitHub Actions.
 

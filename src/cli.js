@@ -15,10 +15,12 @@ import {
   REPOSITORIES,
   SKILLS_CATALOG,
   EDITOR_TARGETS,
-  MASTER_SKILL_ID,
+  ALL_EDITORS,
+  ALWAYS_INSTALLED_SKILLS,
+  CORE_SKILL_COUNT,
   resolveEditors
 } from './config.js';
-import { installSkills, listAvailableSkills } from './installer.js';
+import { installSkills, listAvailableSkills, resolveLayout } from './installer.js';
 import { resolveSourceRoot } from './tools/source.js';
 import { runGraphify } from './tools/graphify.js';
 import { runSecurityAudit } from './tools/security.js';
@@ -29,8 +31,16 @@ import { runFullPipeline } from './tools/pipeline.js';
 import { runGrillingSession } from './tools/grill.js';
 import { runSwarmDecomposition } from './tools/swarm.js';
 import { showMotionPresets } from './tools/motion.js';
-import { checkForUpdate, compareToLatest, readCliVersion, updateWorkspace } from './tools/update.js';
+import {
+  checkForUpdate,
+  compareToLatest,
+  detectInstalledSkills,
+  readCliVersion,
+  updateWorkspace
+} from './tools/update.js';
+import { detectLegacyInstall, removeLegacyInstall } from './tools/legacy.js';
 import { readManifest, writeManifest } from './utils/manifest.js';
+import { CLI, RUNNING_VIA_NPX } from './utils/invocation.js';
 
 // Exit codes: 0 success, 1 the command ran but failed or found a blocking
 // problem, 2 the command was used incorrectly.
@@ -102,7 +112,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     case 'swarm': {
       const task = positional.join(' ').trim();
       if (!task) {
-        logError('"swarm" needs a task, for example: smileu swarm "add rate limiting to the login endpoint"');
+        logError(`"swarm" needs a task, for example: ${CLI} swarm "add rate limiting to the login endpoint"`);
         return finish(EXIT_USAGE);
       }
       runSwarmDecomposition(task, cwd);
@@ -135,7 +145,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     default: {
       const guess = closestCommand(typed);
       logError(`Unknown command "${typed}".${guess ? ` Did you mean "${guess}"?` : ''}`);
-      console.error('Run "smileu --help" to see every command.');
+      console.error(`Run "${CLI} --help" to see every command.`);
       return finish(EXIT_USAGE);
     }
   }
@@ -156,6 +166,7 @@ function parseOptions(args) {
     force: false,
     includeNew: false,
     check: false,
+    removeOldLayout: false,
     positional: [],
     errors: []
   };
@@ -210,11 +221,14 @@ function parseOptions(args) {
       case '--check':
         opts.check = true;
         break;
+      case '--remove-old-layout':
+        opts.removeOldLayout = true;
+        break;
       case '--no-color':
         break;
       default:
         if (arg.startsWith('-')) {
-          opts.errors.push(`Unknown option "${arg}". Run "smileu --help" to see valid options.`);
+          opts.errors.push(`Unknown option "${arg}". Run "${CLI} --help" to see valid options.`);
         } else {
           opts.positional.push(arg);
         }
@@ -229,11 +243,33 @@ function reportUsageErrors(errors) {
   return EXIT_USAGE;
 }
 
+/**
+ * Tells the user about skills that versions 1.1.1 and earlier put into folders
+ * the editors do not read.
+ */
+function printLegacyNotice(detection) {
+  if (!detection.locations.length) return;
+
+  const where = detection.locations
+    .map((l) => `${l.dir} (${plural(l.entries.length, l.kind === 'skills' ? 'skill' : 'persona file')})`)
+    .join(', ');
+  console.log('');
+  logNotice(`Found copies from an older Smileu version in folders your editors do not read: ${where}.`);
+  console.log(`  Remove them with "${CLI} update --remove-old-layout". Your own files in those folders are kept.`);
+  if (detection.ruleFiles.length) {
+    console.log(
+      `  ${detection.ruleFiles.join(' and ')} ${detection.ruleFiles.length === 1 ? 'is' : 'are'} no longer written by Smileu. ` +
+        'Delete it yourself if it only holds the old Smileu rules.'
+    );
+  }
+}
+
 async function runInstall(command, args) {
   const opts = parseOptions(args);
   if (opts.core && opts.full) opts.errors.push('Use either --core or --full, not both.');
-  if (opts.includeNew) opts.errors.push('--include-new only works with "smileu update".');
-  if (opts.check) opts.errors.push('--check only works with "smileu update".');
+  if (opts.includeNew) opts.errors.push(`--include-new only works with "${CLI} update".`);
+  if (opts.check) opts.errors.push(`--check only works with "${CLI} update".`);
+  if (opts.removeOldLayout) opts.errors.push(`--remove-old-layout only works with "${CLI} update".`);
   if (opts.errors.length) return reportUsageErrors(opts.errors);
 
   const targetDir = process.cwd();
@@ -243,7 +279,7 @@ async function runInstall(command, args) {
 
   if (command === 'add') {
     if (!opts.positional.length) {
-      logError('"add" needs a skill name, for example: smileu add domain-modeling');
+      logError(`"add" needs a skill name, for example: ${CLI} add domain-modeling`);
       return EXIT_USAGE;
     }
     if (opts.core || opts.full) {
@@ -282,8 +318,8 @@ async function runInstall(command, args) {
       // Without a terminal there is nobody to confirm a full install into the
       // current folder, so require the choice to be spelled out.
       logError(
-        'No install scope given and no terminal to ask. Run "smileu init -y" for the full library in every editor, ' +
-          'or pick one, for example "smileu init claude --core".'
+        `No install scope given and no terminal to ask. Run "${CLI} init -y" for the full library in every editor, ` +
+          `or pick one, for example "${CLI} init claude --core".`
       );
       return EXIT_USAGE;
     }
@@ -292,6 +328,7 @@ async function runInstall(command, args) {
   const source = resolveSourceRoot({ latest });
   try {
     const editors = resolveEditors(editor);
+    const layout = resolveLayout(editors);
     logHeading('Installing Smileu Code Skill');
     logRow(
       'Editors',
@@ -302,9 +339,20 @@ async function runInstall(command, args) {
     logRow('Source', source.engine === 'latest' ? 'Latest from GitHub' : 'Bundled library');
     logRow(
       'Scope',
-      Array.isArray(scope) ? scope.join(', ') : scope === 'core' ? `Core (${SKILLS_CATALOG.length} skills)` : 'Full library'
+      Array.isArray(scope) ? scope.join(', ') : scope === 'core' ? `Core (${CORE_SKILL_COUNT} skills)` : 'Full library'
     );
+    logRow('Skill folders', layout.skillDirs.join(', '));
     logRow('Mode', opts.dryRun ? 'Dry run, no files written' : 'Writing files');
+
+    // When every name given to `add` is unknown, stop before anything is written:
+    // no always-installed skills, no manifest, no .gitignore entry.
+    if (command === 'add') {
+      const preview = installSkills({ targetDir, sourceRoot: source.root, scope, editor, includeTemplates: false, dryRun: true });
+      if (scope.every((id) => !preview.skills.includes(id))) {
+        printInstallSummary(preview, { dryRun: true, command, requested: scope });
+        return EXIT_FAILURE;
+      }
+    }
 
     const useProgress = !opts.dryRun && process.stdout.isTTY && !Array.isArray(scope);
     let lastPct = -1;
@@ -346,6 +394,8 @@ async function runInstall(command, args) {
       });
     }
 
+    if (command === 'init') printLegacyNotice(detectLegacyInstall(targetDir));
+
     return ok ? EXIT_OK : EXIT_FAILURE;
   } finally {
     source.cleanup();
@@ -374,7 +424,7 @@ async function runInteractiveSelect(latestFlag) {
         name: 'editor',
         message: 'Which editor should Smileu install into?',
         choices: [
-          { title: 'All editors (Claude Code, Cursor, Antigravity, Universal)', value: 'all' },
+          { title: `All editors (${ALL_EDITORS.map((e) => EDITOR_TARGETS[e].label).join(', ')})`, value: 'all' },
           ...Object.entries(EDITOR_TARGETS).map(([value, cfg]) => ({ title: cfg.label, value }))
         ],
         initial: 0
@@ -385,7 +435,7 @@ async function runInteractiveSelect(latestFlag) {
         message: 'How much of the library?',
         choices: [
           { title: 'Full library (every skill and agent persona)', value: 'full' },
-          { title: `Core (${SKILLS_CATALOG.length} skills)`, value: 'core' },
+          { title: `Core (${CORE_SKILL_COUNT} skills)`, value: 'core' },
           { title: 'Pick specific skills...', value: 'select' }
         ],
         initial: 0
@@ -420,7 +470,7 @@ async function runInteractiveSelect(latestFlag) {
       {
         type: 'autocompleteMultiselect',
         name: 'skills',
-        message: `Select skills (${available.length} available; ${MASTER_SKILL_ID} is always included)`,
+        message: `Select skills (${available.length} available; ${ALWAYS_INSTALLED_SKILLS.join(' and ')} are always included)`,
         choices: available.map((id) => ({ title: id, value: id })),
         min: 0
       },
@@ -429,7 +479,7 @@ async function runInteractiveSelect(latestFlag) {
     if (cancelled) return null;
 
     if (!picked.skills || !picked.skills.length) {
-      logNotice(`No skills were picked, so the core set (${SKILLS_CATALOG.length} skills) will be installed.`);
+      logNotice(`No skills were picked, so the core set (${CORE_SKILL_COUNT} skills) will be installed.`);
       scope = 'core';
     } else {
       scope = picked.skills;
@@ -448,11 +498,11 @@ function printInstallSummary(result, { dryRun, command, requested }) {
   if (command === 'add' && requested.length && requested.every((id) => !result.skills.includes(id))) {
     result.skipped.forEach((s) => logError(`${s.skill}: ${s.reason}`));
     result.failed.forEach((f) => logError(`${f.skill}: ${f.reason}`));
-    console.error('Run "smileu list --all" to see every skill name.');
+    console.error(`Run "${CLI} list --all" to see every skill name.`);
     return false;
   }
 
-  const target = plural(result.editors.length, 'editor folder');
+  const target = plural(result.destinations.length, 'skill folder');
   console.log('');
   if (dryRun) console.log(`Would install: ${plural(result.skills.length, 'skill')} into ${target}`);
 
@@ -463,7 +513,8 @@ function printInstallSummary(result, { dryRun, command, requested }) {
   }
 
   if (result.agents.length) {
-    console.log(`\nAgent personas: ${result.agents.join(', ')}`);
+    const agentDirs = resolveLayout(result.editors).agentDirs;
+    console.log(`\nAgent personas (${agentDirs.join(', ')}): ${result.agents.join(', ')}`);
     if (result.agentsKept) {
       console.log(`  Kept ${plural(result.agentsKept, 'existing persona file')}. Use --force to replace them.`);
     }
@@ -486,16 +537,23 @@ function printInstallSummary(result, { dryRun, command, requested }) {
 
   if (command === 'init' && !dryRun) {
     console.log('\nNext steps:');
-    console.log('  1. Open the project in your AI editor.');
+    console.log('  1. Open this folder in your editor. If it is already open, reload the window so it picks up the new skills.');
+    console.log('  2. In the editor chat, type /smileu to see the phases, or /smileu secure to run the security check.');
     if (result.templates.includes('PRODUCT.md')) {
-      console.log('  2. Fill in PRODUCT.md and CONTEXT.md, or run "smileu grill" to answer 5 questions.');
+      console.log('  3. Describe the project in PRODUCT.md and CONTEXT.md, or type /smileu align and answer the questions.');
     } else {
-      console.log('  2. Keep PRODUCT.md and CONTEXT.md current, or run "smileu grill" to rewrite them.');
+      console.log('  3. Keep PRODUCT.md and CONTEXT.md current; /smileu align helps update them.');
     }
-    console.log('  3. Run the checks (reports go to .smileu/reports/):');
-    console.log('       smileu audit      secrets, eval/new Function, npm audit');
-    console.log('       smileu run-all    every check in order');
-    console.log('  4. Refresh skills later with "smileu update".\n');
+    console.log('  4. From a terminal (reports go to .smileu/reports/):');
+    console.log(`       ${CLI} audit      secrets, eval/new Function, npm audit`);
+    console.log(`       ${CLI} run-all    every check in order`);
+    console.log(`       ${CLI} update     refresh the installed skills later`);
+
+    if (RUNNING_VIA_NPX) {
+      console.log(`\nThis run used npx, so no "smileu" command was installed. Keep typing "${CLI} <command>",`);
+      console.log(`or install it once with "npm install -g ${NPM_PACKAGE_NAME}" to type "smileu <command>".`);
+    }
+    console.log('');
   }
 
   return problems.length === 0;
@@ -505,6 +563,7 @@ async function runUpdate(args) {
   const opts = parseOptions(args);
   if (opts.core || opts.full) opts.errors.push('--core and --full only apply to "init". "update" refreshes what is already installed.');
   if (opts.force) opts.errors.push('--force only applies to "init". "update" always refreshes changed files.');
+  if (opts.check && opts.removeOldLayout) opts.errors.push('Use --check on its own; it does not change any files.');
   if (opts.positional.length) {
     opts.errors.push(`Unexpected argument "${opts.positional[0]}". Use --editor <name> to update one editor.`);
   }
@@ -550,6 +609,50 @@ async function runUpdate(args) {
   }
 
   const targetDir = process.cwd();
+  const legacy = detectLegacyInstall(targetDir, { editor });
+  const installed = detectInstalledSkills(targetDir).filter((t) => editor === 'all' || t.editors.includes(editor));
+
+  if (!installed.length) {
+    if (legacy.locations.length) {
+      logError(
+        `Skills were found only in folders that older Smileu versions used, which your editors do not read (${legacy.locations
+          .map((l) => l.dir)
+          .join(', ')}). Run "${CLI} init <editor>" to install them where your editor looks, then "${CLI} update --remove-old-layout".`
+      );
+    } else {
+      logError(
+        editor === 'all'
+          ? `No installed skills found in this folder. Run "${CLI} init" first.`
+          : `No installed skills found for ${EDITOR_TARGETS[editor].label}. Run "${CLI} init ${editor}" first.`
+      );
+    }
+    return EXIT_FAILURE;
+  }
+
+  let legacyFailed = false;
+  if (opts.removeOldLayout) {
+    logHeading('Removing copies from older Smileu versions');
+    if (!legacy.locations.length) {
+      logInfo('Nothing to remove: no copies from older versions were found.');
+    } else {
+      const { removed, failed } = removeLegacyInstall(targetDir, legacy, { dryRun: opts.dryRun });
+      legacy.locations.forEach((l) => logRow(l.dir, plural(l.entries.length, l.kind === 'skills' ? 'skill' : 'persona file')));
+      failed.forEach((f) => logNotice(`${f.path}: could not remove (${f.reason})`));
+      legacyFailed = failed.length > 0;
+      if (opts.dryRun) {
+        logInfo(`Would remove ${plural(removed.length, 'old copy', 'old copies')}. Your own files in those folders are kept.`);
+      } else {
+        logSuccess(`Removed ${plural(removed.length, 'old copy', 'old copies')}. Your own files in those folders were kept.`);
+      }
+      if (legacy.ruleFiles.length) {
+        logInfo(`${legacy.ruleFiles.join(' and ')} ${legacy.ruleFiles.length === 1 ? 'was' : 'were'} left in place. Delete them yourself if they only hold the old Smileu rules.`);
+      }
+    }
+    legacy.kept.forEach((k) =>
+      logNotice(`${k.dir}: kept ${k.names.join(', ')}, which ${k.names.length === 1 ? 'does' : 'do'} not match the Smileu version.`)
+    );
+  }
+
   const manifest = readManifest(targetDir);
   const source = resolveSourceRoot({ latest: opts.latest });
 
@@ -568,15 +671,6 @@ async function runUpdate(args) {
       includeNew: opts.includeNew,
       dryRun: opts.dryRun
     });
-
-    if (!result.targets.length) {
-      logError(
-        editor === 'all'
-          ? 'No installed skills found in this folder. Run "smileu init" first.'
-          : `No installed skills found for ${EDITOR_TARGETS[editor].label}. Run "smileu init ${editor}" first.`
-      );
-      return EXIT_FAILURE;
-    }
 
     const installedIds = new Set();
     const missing = new Set();
@@ -605,7 +699,7 @@ async function runUpdate(args) {
     if (!opts.includeNew && manifest && manifest.scope === 'full') {
       const newSkills = listAvailableSkills(source.root).filter((id) => !installedIds.has(id));
       if (newSkills.length) {
-        logInfo(`${plural(newSkills.length, 'new skill')} are in the library. Add them with "smileu update --include-new".`);
+        logInfo(`${plural(newSkills.length, 'new skill')} are in the library. Add them with "${CLI} update --include-new".`);
       }
     }
 
@@ -626,7 +720,9 @@ async function runUpdate(args) {
       }
     }
 
-    return EXIT_OK;
+    if (!opts.removeOldLayout) printLegacyNotice(legacy);
+
+    return legacyFailed ? EXIT_FAILURE : EXIT_OK;
   } finally {
     source.cleanup();
   }
@@ -657,7 +753,7 @@ function printList(args) {
     const ids = listAvailableSkills();
     const matches = filter ? ids.filter((id) => id.includes(filter)) : ids;
     if (!matches.length) {
-      logError(`No skill names contain "${filter}". Run "smileu list --all" to see every name.`);
+      logError(`No skill names contain "${filter}". Run "${CLI} list --all" to see every name.`);
       return EXIT_FAILURE;
     }
     matches.forEach((id) => console.log(id));
@@ -671,12 +767,13 @@ function printList(args) {
     console.log(`   ${skill.description}`);
   });
 
-  console.log(`\nThe bundled library has ${listAvailableSkills().length} skills in total.`);
+  console.log(`\nEvery install also includes the "smileu" skill, which provides the /smileu command in your editor.`);
+  console.log(`The bundled library has ${listAvailableSkills().length} skills in total.`);
   console.log('\nInstall:');
-  console.log('  Full library      smileu init');
-  console.log('  Core skills only  smileu init --core');
-  console.log('  One skill         smileu add <skill-name>');
-  console.log('  Every skill name  smileu list --all [filter]\n');
+  console.log(`  Full library      ${CLI} init`);
+  console.log(`  Core skills only  ${CLI} init --core`);
+  console.log(`  One skill         ${CLI} add <skill-name>`);
+  console.log(`  Every skill name  ${CLI} list --all [filter]\n`);
   return EXIT_OK;
 }
 
@@ -694,8 +791,11 @@ function printHelp() {
   console.log(`Usage: smileu <command> [options]
        npx ${NPM_PACKAGE_NAME} <command> [options]
 
+"smileu" is available after "npm install -g ${NPM_PACKAGE_NAME}". Without a global
+install, type "npx ${NPM_PACKAGE_NAME}" instead.
+
 Install
-  init [editor]          Install skills, agent personas and project templates (default command)
+  init [editor]          Install skills, agent personas, project documents and editor files (default command)
   add <skill...>         Install one or more skills by name
   update                 Refresh installed skills and personas from the library
 
@@ -705,7 +805,7 @@ Checks (reports are written to .smileu/reports/)
   craft                  Flag pure black, bounce/elastic easing and nested cards in UI files
   humanize               Flag common AI phrases in Markdown files
   graph                  Build a file and import graph in .smileu/graph/
-  run-all                Templates, graph, craft, audit and humanize, in order
+  run-all                Project documents, graph, craft, audit and humanize, in order
 
 Planning
   grill                  Ask 5 questions, then write PRODUCT.md and CONTEXT.md
@@ -719,9 +819,17 @@ Setup
   list [--all] [filter]  List the core skills, or every skill name
   repos                  List the upstream projects
 
+Editors (init, add, update)
+  claude                 .claude/skills, .claude/agents, CLAUDE.md
+  cursor                 .agents/skills, .cursor/agents, .cursor/rules/smileu.mdc
+  windsurf               .agents/skills, .windsurf/rules/smileu.md, .windsurf/workflows/smileu.md
+  antigravity            .agents/skills, .agents/rules/smileu.md
+  universal              .agents/skills only
+  all                    claude, cursor, windsurf and antigravity (default)
+
 Install options (init, add)
   -e, --editor <name>    ${EDITOR_NAMES} (default: all)
-  --core                 Install the ${SKILLS_CATALOG.length} core skills instead of the full library
+  --core                 Install the ${CORE_SKILL_COUNT} core skills instead of the full library
   --latest               Use the current library on GitHub instead of the bundled copy (needs git)
   --force                Replace agent persona files that already exist
   --dry-run              Show what would be installed without writing files
@@ -731,6 +839,7 @@ Update options
   -e, --editor <name>    Only update this editor's folders
   --latest               Update from the current library on GitHub
   --include-new          Also install library skills this project does not have yet
+  --remove-old-layout    Remove the copies older versions put in .cursor/rules/, .agent/ and .skills/
   --check                Check npm and GitHub for a newer release of this CLI (writes nothing)
   --dry-run              Show what would change without writing files
 
@@ -739,17 +848,19 @@ Global options
   -v, --version          Print the version
   -h, --help             Print this help
 
+In your editor
+  /smileu [phase]        align, graph, swarm <task>, craft, polish, secure, humanize, motion, all, update
+
 Aliases:     install = init, align = grill, secure = audit, polish = craft, pipeline = run-all
 Exit codes:  0 success, 1 the command failed or found a blocking problem, 2 invalid usage
 
 Examples
-  smileu init claude                 Install everything for Claude Code
-  smileu init --core -e cursor -y    Install the core skills for Cursor without prompts
-  smileu add domain-modeling         Add one skill
-  smileu update --include-new        Refresh skills and add new ones from the library
-  smileu update --check              See whether a newer release exists
-  smileu audit                       Write .smileu/reports/SECURITY_AUDIT.md
-  smileu motion enter                Print the enter preset
+  ${CLI} init claude                 Install everything for Claude Code
+  ${CLI} init --core -e cursor -y    Install the core skills for Cursor without prompts
+  ${CLI} add domain-modeling         Add one skill
+  ${CLI} update --include-new        Refresh skills and add new ones from the library
+  ${CLI} update --check              See whether a newer release exists
+  ${CLI} audit                       Write .smileu/reports/SECURITY_AUDIT.md
 `);
 }
 

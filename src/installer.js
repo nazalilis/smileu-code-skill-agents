@@ -4,12 +4,22 @@ import {
   PACKAGE_ROOT,
   SKILLS_CATALOG,
   EDITOR_TARGETS,
-  MASTER_SKILL_ID,
+  ALWAYS_INSTALLED_SKILLS,
   resolveEditors
 } from './config.js';
 
 const IGNORED_ENTRIES = new Set(['node_modules', '.git', '.github']);
 const INVALID_NAME_REASON = 'Skill names cannot contain "/", "\\" or "..".';
+
+// Project documents every install creates when they are missing, whatever the
+// editor. AGENTS.md is read by Cursor and Windsurf as well.
+const PROJECT_DOCUMENTS = [
+  { template: 'PRODUCT.md', dest: 'PRODUCT.md' },
+  { template: 'CONTEXT.md', dest: 'CONTEXT.md' },
+  { template: 'DESIGN.md', dest: 'DESIGN.md' },
+  { template: 'AGENTS.md', dest: 'AGENTS.md' },
+  { template: '../docs/adr/0001-unified-vibe-coding-harness.md', dest: 'docs/adr/0001-unified-vibe-coding-harness.md' }
+];
 
 /**
  * Validates that an untrusted relative path cannot traverse outside its base
@@ -53,6 +63,27 @@ export function listAvailableSkills(sourceRoot = PACKAGE_ROOT) {
   return listSkillIds(path.join(sourceRoot, 'skills'));
 }
 
+/**
+ * The distinct skill folders, agent folders and editor files for a set of
+ * editors. Editors that share a folder (Cursor, Windsurf and Antigravity all
+ * read `.agents/skills`) get it once.
+ */
+export function resolveLayout(editors) {
+  const unique = (values) => [...new Set(values.filter(Boolean))];
+  const files = new Map();
+  for (const editor of editors) {
+    for (const file of EDITOR_TARGETS[editor].files) {
+      if (!files.has(file.dest)) files.set(file.dest, file);
+    }
+  }
+
+  return {
+    skillDirs: unique(editors.map((e) => EDITOR_TARGETS[e].skills)),
+    agentDirs: unique(editors.map((e) => EDITOR_TARGETS[e].agents)),
+    files: [...files.values()]
+  };
+}
+
 function copyFileSync(src, dest, dryRun = false) {
   if (dryRun) return 1;
   fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -92,7 +123,9 @@ function describeWriteError(err, targetDir) {
     EEXIST: 'a file is in the way of a folder',
     EISDIR: 'a folder is in the way of a file',
     ENOSPC: 'the disk is full',
-    EROFS: 'the file system is read-only'
+    EROFS: 'the file system is read-only',
+    ENOENT: 'a source file is missing (an antivirus may have quarantined it)',
+    UNKNOWN: 'the operating system or an antivirus blocked the file'
   };
   const reason = (err && reasons[err.code]) || (err && err.code) || 'could not write files';
   const where = err && (err.dest || err.path);
@@ -138,8 +171,8 @@ function resolveSkillList(scope, skillsSourceDir, results) {
     selected.set(id, { id, dir: id });
   };
 
-  // The master skill is always present so `/smileu` works after any install.
-  add(MASTER_SKILL_ID);
+  // The master skill and the /smileu command are present after any install.
+  ALWAYS_INSTALLED_SKILLS.forEach(add);
 
   if (Array.isArray(scope)) {
     scope.forEach(add);
@@ -153,15 +186,15 @@ function resolveSkillList(scope, skillsSourceDir, results) {
 }
 
 /**
- * Installs skills, agent personas, and project templates into the target
- * workspace for one or more editors.
+ * Installs skills, agent personas, project documents and editor files into the
+ * target workspace for one or more editors.
  *
  * @param {object}   options
  * @param {string}   options.targetDir        Workspace to install into.
  * @param {string}   options.sourceRoot       Root holding skills/, templates/, docs/.
  * @param {'full'|'core'|string[]} options.scope  What to install.
  * @param {string}   options.editor           Editor id or 'all'.
- * @param {boolean}  options.includeTemplates Copy PRODUCT/CONTEXT/DESIGN/AGENTS, rules, agents and the ADR.
+ * @param {boolean}  options.includeTemplates Also write project documents, editor files and personas.
  * @param {boolean}  options.force            Replace agent persona files that already exist.
  * @param {boolean}  options.dryRun           Simulate without writing.
  * @param {function} options.onProgress       Called with (done, total) during copy.
@@ -195,21 +228,21 @@ export function installSkills({
   }
   results.editors = editors;
 
+  const layout = resolveLayout(editors);
   const skillsSourceDir = path.join(sourceRoot, 'skills');
   const skillsToInstall = resolveSkillList(scope, skillsSourceDir, results);
-  const skillDestBases = editors.map((e) => path.join(targetDir, EDITOR_TARGETS[e].skills));
-  results.destinations = skillDestBases.map((d) => path.relative(targetDir, d).replace(/\\/g, '/'));
+  results.destinations = layout.skillDirs;
 
-  const total = skillsToInstall.length * skillDestBases.length;
+  const total = skillsToInstall.length * layout.skillDirs.length;
   let done = 0;
 
   for (const skill of skillsToInstall) {
     const srcSkillDir = path.join(skillsSourceDir, skill.dir);
     let failed = false;
 
-    for (const base of skillDestBases) {
+    for (const dir of layout.skillDirs) {
       try {
-        results.filesWritten += copyDirSync(srcSkillDir, path.join(base, skill.dir), dryRun);
+        results.filesWritten += copyDirSync(srcSkillDir, path.join(targetDir, dir, skill.dir), dryRun);
       } catch (err) {
         failed = true;
         results.failed.push({ skill: skill.id, reason: describeWriteError(err, targetDir) });
@@ -222,43 +255,21 @@ export function installSkills({
   }
 
   if (includeTemplates) {
-    installTemplates({ targetDir, sourceRoot, editors, dryRun, results });
-    installAgents({ targetDir, sourceRoot, editors, force, dryRun, results });
+    copyTemplateFiles([...PROJECT_DOCUMENTS, ...layout.files], { targetDir, sourceRoot, dryRun, results });
+    installAgents({ targetDir, sourceRoot, agentDirs: layout.agentDirs, force, dryRun, results });
   }
 
   return results;
 }
 
 /**
- * Copies root documents (PRODUCT/CONTEXT/DESIGN/AGENTS), editor rules files, and
- * the seed ADR. Existing files are never replaced, so a re-run keeps user edits;
- * a dry run reports exactly what a real run would write.
+ * Copies template files that do not exist in the workspace yet. Existing files
+ * are never replaced, so a re-run keeps user edits; a dry run reports exactly
+ * what a real run would write.
  */
-function installTemplates({ targetDir, sourceRoot, editors, dryRun, results }) {
-  const templateFiles = [
-    { name: 'PRODUCT.md', dest: 'PRODUCT.md' },
-    { name: 'CONTEXT.md', dest: 'CONTEXT.md' },
-    { name: 'DESIGN.md', dest: 'DESIGN.md' },
-    { name: 'AGENTS.md', dest: 'AGENTS.md' }
-  ];
-
-  for (const e of editors) {
-    const rules = EDITOR_TARGETS[e].rules;
-    if (!rules) continue;
-    // Cursor and Windsurf both derive from the .cursorrules template.
-    const srcName = rules === '.windsurfrules' ? '.cursorrules' : rules;
-    if (!templateFiles.some((t) => t.dest === rules)) {
-      templateFiles.push({ name: srcName, dest: rules });
-    }
-  }
-
-  templateFiles.push({
-    name: path.join('..', 'docs', 'adr', '0001-unified-vibe-coding-harness.md'),
-    dest: 'docs/adr/0001-unified-vibe-coding-harness.md'
-  });
-
-  for (const item of templateFiles) {
-    const srcPath = path.join(sourceRoot, 'templates', item.name);
+function copyTemplateFiles(files, { targetDir, sourceRoot, dryRun, results }) {
+  for (const item of files) {
+    const srcPath = path.join(sourceRoot, 'templates', item.template);
     const destPath = path.join(targetDir, item.dest);
     if (!fs.existsSync(srcPath) || fs.existsSync(destPath)) continue;
 
@@ -272,22 +283,21 @@ function installTemplates({ targetDir, sourceRoot, editors, dryRun, results }) {
 }
 
 /**
- * Provisions the agent personas into each selected editor's agents folder.
- * Existing persona files are kept unless `force` is set; `smileu update`
- * is the command that refreshes them.
+ * Provisions the agent personas into each agents folder. Existing persona files
+ * are kept unless `force` is set; `smileu update` is the command that refreshes
+ * them.
  */
-function installAgents({ targetDir, sourceRoot, editors, force, dryRun, results }) {
+function installAgents({ targetDir, sourceRoot, agentDirs, force, dryRun, results }) {
   const agentsSrc = path.join(sourceRoot, 'templates', 'agents');
-  if (!fs.existsSync(agentsSrc)) return;
+  if (!agentDirs.length || !fs.existsSync(agentsSrc)) return;
 
   const agentFiles = fs.readdirSync(agentsSrc).filter((f) => f.endsWith('.md'));
   const installed = new Set();
 
-  for (const e of editors) {
-    const destDir = path.join(targetDir, EDITOR_TARGETS[e].agents);
+  for (const dir of agentDirs) {
     for (const file of agentFiles) {
       const name = file.replace(/\.md$/, '');
-      const dest = path.join(destDir, file);
+      const dest = path.join(targetDir, dir, file);
 
       if (!force && fs.existsSync(dest)) {
         results.agentsKept += 1;
@@ -308,17 +318,12 @@ function installAgents({ targetDir, sourceRoot, editors, force, dryRun, results 
 }
 
 /**
- * Ensures the base project documents and editor rules exist, without installing
- * the skill library. Used by the pipeline's align phase. Never overwrites.
+ * Ensures the project documents exist (PRODUCT.md, CONTEXT.md, DESIGN.md,
+ * AGENTS.md and the seed ADR) without installing skills or editor files. Used
+ * by the pipeline's align phase. Never overwrites.
  */
-export function ensureTemplates({
-  targetDir = process.cwd(),
-  sourceRoot = PACKAGE_ROOT,
-  editor = 'all',
-  dryRun = false
-} = {}) {
+export function ensureTemplates({ targetDir = process.cwd(), sourceRoot = PACKAGE_ROOT, dryRun = false } = {}) {
   const results = { templates: [], skipped: [], failed: [] };
-  const editors = resolveEditors(editor) || resolveEditors('all');
-  installTemplates({ targetDir, sourceRoot, editors, dryRun, results });
+  copyTemplateFiles(PROJECT_DOCUMENTS, { targetDir, sourceRoot, dryRun, results });
   return results;
 }

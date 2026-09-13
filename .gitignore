@@ -47,6 +47,7 @@ data/
 .agent/skills/
 .agent/agents/
 .skills/
+.windsurf/
 
 # Extraneous third-party editor agent caches (created by npx skills add --all)
 .adal/

@@ -1,0 +1,19 @@
+---
+trigger: always_on
+description: Smileu Code Skill rules for this project
+---
+
+# Smileu Code Skill
+
+## Project context
+
+- Read `PRODUCT.md`, `CONTEXT.md`, `DESIGN.md` and `AGENTS.md` before larger changes, and use the domain terms defined in `CONTEXT.md`.
+- Skills are in `.agents/skills/`. Type `/smileu` to see the phases, or `/smileu <phase>` to run one, for example `/smileu secure`.
+
+## Working rules
+
+1. When requirements are vague, ask 2 or 3 precise questions before writing code.
+2. Design: no generic purple-gradient card templates and no cards nested in cards. Tint dark and light neutrals instead of using pure #000000 or #ffffff. Use ease-out for entering elements and ease-in for exiting ones, and keep transitions under 300ms.
+3. Security: validate all input with a schema validator, never hardcode secrets or credentials, and prevent SQL injection, command injection and XSS.
+4. Writing: state code and architecture decisions plainly, without chatbot filler or stock AI phrasing. The `humanizer-writing` skill lists the patterns to avoid.
+5. Language: source code, comments, tests, commit messages, CLI output and repository documents are written in standard English.

@@ -17,14 +17,23 @@ after(() => {
   if (!repoOutputExisted) fs.rmSync(REPO_OUTPUT_DIR, { recursive: true, force: true });
 });
 
+// A predictable environment: no colour, CI mode, and no npm_command, so the CLI
+// behaves as if it was started directly rather than through npm or npx.
+function testEnv(extra = {}) {
+  const env = { ...process.env, NO_COLOR: '1', CI: 'true' };
+  delete env.FORCE_COLOR;
+  delete env.npm_command;
+  return { ...env, ...extra };
+}
+
 // Runs the CLI without a shell and captures stdout, stderr and the exit code.
 // stdin is a pipe, never a TTY, so no command can stop to prompt.
-function cli(args, { cwd = ROOT, input = '' } = {}) {
+function cli(args, { cwd = ROOT, input = '', env = {} } = {}) {
   const result = spawnSync(process.execPath, [CLI_PATH, ...args], {
     cwd,
     input,
     encoding: 'utf-8',
-    env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: undefined, CI: 'true' }
+    env: testEnv(env)
   });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
@@ -176,7 +185,7 @@ test('install flags parse in any order and dry runs write nothing', () => {
     const flagsFirst = cli(['--core', '--dry-run', '-e', 'claude'], { cwd: dir });
     assert.equal(flagsFirst.status, 0, flagsFirst.stderr);
     assert.match(flagsFirst.stdout, /Editors:\s+Claude Code/);
-    assert.match(flagsFirst.stdout, /Scope:\s+Core \(9 skills\)/);
+    assert.match(flagsFirst.stdout, /Scope:\s+Core \(10 skills\)/);
 
     const editorAfterFlags = cli(['init', '--dry-run', '-y', 'cursor'], { cwd: dir });
     assert.equal(editorAfterFlags.status, 0, editorAfterFlags.stderr);
@@ -323,5 +332,112 @@ test('add reports unknown or unsafe skill names and exits 1', () => {
     const traversal = cli(['add', '../../etc/passwd', '--dry-run'], { cwd: dir });
     assert.equal(traversal.status, 1);
     assert.match(traversal.stderr, /Skill names cannot contain/);
+
+    const live = cli(['add', 'no-such-skill-zzz'], { cwd: dir });
+    assert.equal(live.status, 1);
+    assert.match(live.stderr, /no-such-skill-zzz: No skill with this name/);
+    assert.deepEqual(fs.readdirSync(dir), [], 'an add with only unknown names writes nothing');
   });
+});
+
+test('hints repeat "npx smileu-code-skill" when the CLI was started through npx', () => {
+  withTempDir((dir) => {
+    const viaNpx = { npm_command: 'exec' };
+
+    const missing = cli(['update'], { cwd: dir, env: viaNpx });
+    assert.equal(missing.status, 1);
+    assert.match(missing.stderr, /Run "npx smileu-code-skill init" first/);
+
+    const install = cli(['init', 'claude', '--core', '-y'], { cwd: dir, env: viaNpx });
+    assert.equal(install.status, 0, install.stderr);
+    assert.match(install.stdout, /npx smileu-code-skill audit/);
+    assert.match(install.stdout, /no "smileu" command was installed/);
+    assert.match(install.stdout, /npm install -g smileu-code-skill/);
+    assert.doesNotMatch(install.stdout, /^\s+smileu audit/m);
+  });
+
+  withTempDir((dir) => {
+    const direct = cli(['init', 'claude', '--core', '-y'], { cwd: dir });
+    assert.equal(direct.status, 0, direct.stderr);
+    assert.match(direct.stdout, /^\s+smileu audit/m, 'a global install keeps the short command');
+    assert.doesNotMatch(direct.stdout, /no "smileu" command was installed/);
+  });
+});
+
+test('help documents editors, /smileu and --remove-old-layout; install rejects update-only options', () => {
+  const help = cli(['--help']);
+  assert.match(help.stdout, /cursor\s+\.agents\/skills, \.cursor\/agents, \.cursor\/rules\/smileu\.mdc/);
+  assert.match(help.stdout, /\/smileu \[phase\]/);
+  assert.match(help.stdout, /--remove-old-layout/);
+  assert.match(help.stdout, /"smileu" is available after "npm install -g smileu-code-skill"/);
+
+  withTempDir((dir) => {
+    const wrong = cli(['init', '--remove-old-layout', '-y'], { cwd: dir });
+    assert.equal(wrong.status, 2);
+    assert.match(wrong.stderr, /--remove-old-layout only works with "smileu update"/);
+
+    const dry = cli(['init', 'cursor', '--dry-run', '-y'], { cwd: dir });
+    assert.equal(dry.status, 0, dry.stderr);
+    assert.match(dry.stdout, /Skill folders:\s+\.agents\/skills/);
+    assert.match(dry.stdout, /Would create: .*\.cursor\/rules\/smileu\.mdc/);
+    assert.deepEqual(fs.readdirSync(dir), []);
+  });
+});
+
+test('packaged templates are loadable by the editors: frontmatter, command skill and editor files', async () => {
+  const { EDITOR_TARGETS, ALWAYS_INSTALLED_SKILLS } = await import('../src/config.js');
+  const frontmatter = (file) => {
+    const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(file, 'utf-8'));
+    assert.ok(match, `${path.relative(ROOT, file)} starts with frontmatter`);
+    return match[1];
+  };
+
+  const agentsDir = path.join(ROOT, 'templates', 'agents');
+  const personas = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md'));
+  assert.equal(personas.length, 12);
+  for (const file of personas) {
+    const head = frontmatter(path.join(agentsDir, file));
+    assert.match(head, new RegExp(`^name: ${file.replace(/\.md$/, '')}$`, 'm'), `${file} name matches the file name`);
+    assert.match(head, /^description: \S/m, `${file} has a description`);
+  }
+
+  for (const id of ALWAYS_INSTALLED_SKILLS) {
+    const head = frontmatter(path.join(ROOT, 'skills', id, 'SKILL.md'));
+    assert.match(head, new RegExp(`^name: ${id}$`, 'm'));
+    assert.match(head, /^description: \S/m);
+  }
+
+  for (const [editor, cfg] of Object.entries(EDITOR_TARGETS)) {
+    for (const file of cfg.files) {
+      assert.ok(fs.existsSync(path.join(ROOT, 'templates', file.template)), `${editor}: templates/${file.template} exists`);
+    }
+  }
+  assert.match(frontmatter(path.join(ROOT, 'templates', 'editors', 'cursor-rule.mdc')), /^alwaysApply: true$/m);
+  assert.match(frontmatter(path.join(ROOT, 'templates', 'editors', 'windsurf-rule.md')), /^trigger: always_on$/m);
+  assert.match(frontmatter(path.join(ROOT, 'templates', 'editors', 'antigravity-rule.md')), /^trigger: always_on$/m);
+  assert.match(fs.readFileSync(path.join(ROOT, 'templates', 'CLAUDE.md'), 'utf-8'), /^@AGENTS\.md$/m, 'CLAUDE.md imports AGENTS.md');
+  assert.match(frontmatter(path.join(ROOT, 'templates', 'editors', 'windsurf-workflow.md')), /^description: \S/m);
+});
+
+test('detectCliCommand recognises npx by npm_command or by the npx cache path', async () => {
+  const { detectCliCommand } = await import('../src/utils/invocation.js');
+  assert.equal(detectCliCommand({ env: { npm_command: 'exec' }, script: '/usr/lib/node_modules/x/bin/cli.js' }), 'npx smileu-code-skill');
+  assert.equal(detectCliCommand({ env: {}, script: 'C:\\Users\\me\\AppData\\Local\\npm-cache\\_npx\\1a2b\\node_modules\\smileu-code-skill\\bin\\cli.js' }), 'npx smileu-code-skill');
+  assert.equal(detectCliCommand({ env: {}, script: '/home/me/.npm/_npx/1a2b/node_modules/smileu-code-skill/bin/cli.js' }), 'npx smileu-code-skill');
+  assert.equal(detectCliCommand({ env: { npm_command: 'test' }, script: '/usr/local/lib/node_modules/smileu-code-skill/bin/cli.js' }), 'smileu');
+
+  // A devDependency started through an npm script: npm_command is "run", and
+  // "smileu" is not on the PATH, so hints must use npx.
+  const project = path.join(os.tmpdir(), 'smileu-invocation-project');
+  assert.equal(
+    detectCliCommand({ env: { npm_command: 'run' }, script: path.join(project, 'node_modules', 'smileu-code-skill', 'bin', 'cli.js'), cwd: path.join(project, 'src') }),
+    'npx smileu-code-skill'
+  );
+  // A global install started from an unrelated npm script keeps the short command.
+  assert.equal(
+    detectCliCommand({ env: { npm_command: 'run' }, script: path.join(os.tmpdir(), 'global-prefix', 'lib', 'node_modules', 'smileu-code-skill', 'bin', 'cli.js'), cwd: project }),
+    'smileu'
+  );
+  assert.equal(detectCliCommand({ env: {}, script: '/home/me/.local/share/pnpm/store/v3/dlx/abc/node_modules/smileu-code-skill/bin/cli.js', cwd: '/home/me/app' }), 'npx smileu-code-skill');
+  assert.equal(detectCliCommand({ env: {}, script: '/home/me/.bun/install/cache/smileu-code-skill@1.2.0/bin/cli.js', cwd: '/home/me/app' }), 'npx smileu-code-skill');
 });

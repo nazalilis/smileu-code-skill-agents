@@ -31,7 +31,7 @@ When assigned any feature or refactoring task, follow this exact progression:
 ```
 [1. ALIGN]     --> Grill intent, update CONTEXT.md & PRODUCT.md
       ↓
-[2. ARCHITECT] --> Consult .smileu/graph/ (run "smileu graph"), map god nodes, document ADR
+[2. ARCHITECT] --> Consult .smileu/graph/ (run /smileu graph), map god nodes, document ADR
       ↓
 [3. SWARM]     --> Decompose subtasks across specialized agent roles
       ↓
