@@ -10,9 +10,10 @@
 
 ## 3. Operating Context & Constraints
 - **Platform:** Cross-platform Node.js CLI (Windows, macOS, Linux).
-- **Execution:** Zero-setup executable via `npx smileu-code-skill` or local npm script.
+- **Execution:** `smileu` after installing `@nazalilis/smileu-code-skill` from GitHub Packages, or `npx github:nazalilis/smileu-code-skill-agents` without installing.
 - **Target Editors:** Cursor (`.cursor/rules`), Claude Code (`.claude/skills`, `CLAUDE.md`), Antigravity/Gemini (`.agent/skills`), Windsurf (`.windsurfrules`), Universal (`.skills/`).
-- **Dependencies:** Lightweight, zero external dependencies required for core execution.
+- **Dependencies:** Node.js 18 or later. Two small npm dependencies (`picocolors`, `prompts`); the CLI still works without them.
+- **Updates:** Installed skills are refreshed with `smileu update`; releases are cut and published by GitHub Actions.
 
 ## 4. Brand Voice & Personality
 - **Tone:** Sharp, intentional, pragmatic, disciplined, inspiring.

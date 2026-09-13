@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [18, 20, 22]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  package:
+    name: Package contents
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify the publishable tarball
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e "
+            const [pack] = JSON.parse(require('fs').readFileSync('pack.json', 'utf-8'));
+            const files = pack.files.map((f) => f.path);
+            const required = ['bin/cli.js', 'src/index.js', 'src/cli.js', 'package.json', 'README.md'];
+            const missing = required.filter((f) => !files.includes(f));
+            const leaked = files.filter((f) => /^(test|scripts|\.github)\//.test(f) || /\.env/.test(f));
+            console.log('Tarball: ' + pack.entryCount + ' files, ' + (pack.unpackedSize / 1048576).toFixed(1) + ' MB unpacked');
+            if (missing.length) { console.error('Missing from tarball: ' + missing.join(', ')); process.exit(1); }
+            if (leaked.length) { console.error('Should not be published: ' + leaked.slice(0, 10).join(', ')); process.exit(1); }
+          "
+
+      - name: Check the release notes extractor
+        run: node scripts/release-notes.js "$(node -p "require('./package.json').version")" || echo "No changelog section for the current version yet."

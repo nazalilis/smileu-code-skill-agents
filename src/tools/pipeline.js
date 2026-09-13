@@ -5,51 +5,59 @@ import { runSecurityAudit } from './security.js';
 import { runHumanizerCheck } from './humanizer.js';
 import { runDesignAudit } from './design.js';
 import { ensureTemplates } from '../installer.js';
-import { logSuccess, logInfo, logWarn } from '../ui.js';
+import { logSuccess, logNotice, logWarn, logHeading } from '../ui.js';
 
+/**
+ * Runs every check in order. A failing step is reported and the remaining
+ * steps still run; `failed` is true when any step failed or the security scan
+ * found critical or high issues.
+ */
 export async function runFullPipeline(targetDir = process.cwd()) {
-  console.log('\n======================================================');
-  console.log('   SMILEU 6-PHASE VIBE CODING PIPELINE EXECUTION');
-  console.log('======================================================\n');
+  logHeading('Running all checks');
+  const outcome = { failed: false };
 
-  // Phase 1: Align & Clarify
-  console.log('\n--- [PHASE 1/6: ALIGN & CLARIFY] ---');
-  logInfo('Verifying Product Truth (PRODUCT.md) and Domain Dictionary (CONTEXT.md)...');
-  const hasProduct = fs.existsSync(path.join(targetDir, 'PRODUCT.md'));
-  const hasContext = fs.existsSync(path.join(targetDir, 'CONTEXT.md'));
-  if (!hasProduct || !hasContext) {
-    ensureTemplates({ targetDir });
-    logSuccess('Initialized missing PRODUCT.md / CONTEXT.md templates.');
+  console.log('\n[Phase 1/6: Align] Project documents');
+  const templates = ensureTemplates({ targetDir });
+  if (templates.templates.length) {
+    logSuccess(`Created ${templates.templates.join(', ')}.`);
   } else {
-    logSuccess('PRODUCT.md and CONTEXT.md are active and established.');
+    logSuccess('Found PRODUCT.md and CONTEXT.md.');
+  }
+  if (templates.failed && templates.failed.length) {
+    templates.failed.forEach((f) => logWarn(`${f.skill}: ${f.reason}`));
+    outcome.failed = true;
   }
 
-  // Phase 2: Architect & Map
-  console.log('\n--- [PHASE 2/6: ARCHITECT & MAP] ---');
-  runGraphify({ targetDir });
-
-  // Phase 3: Orchestrate & Decompose
-  console.log('\n--- [PHASE 3/6: ORCHESTRATE & DECOMPOSE] ---');
-  const agentsPath = path.join(targetDir, 'AGENTS.md');
-  if (fs.existsSync(agentsPath)) {
-    logSuccess('Multi-agent configuration (AGENTS.md) is present and ready.');
-  } else {
-    logInfo('Generating standard AGENTS.md swarm orchestrator file...');
+  console.log('\n[Phase 2/6: Map] Knowledge graph');
+  try {
+    runGraphify({ targetDir });
+  } catch (err) {
+    logWarn(`The graph step failed: ${err.message}`);
+    outcome.failed = true;
   }
 
-  // Phase 4: Craft & Polish
-  console.log('\n--- [PHASE 4/6: CRAFT & POLISH] ---');
+  console.log('\n[Phase 3/6: Orchestrate] Agent configuration');
+  if (fs.existsSync(path.join(targetDir, 'AGENTS.md'))) {
+    logSuccess('Found AGENTS.md.');
+  } else {
+    logNotice('AGENTS.md not found. Run "smileu init" to create it.');
+  }
+
+  console.log('\n[Phase 4/6: Craft] Design scan');
   runDesignAudit(targetDir);
 
-  // Phase 5: Harden & Secure
-  console.log('\n--- [PHASE 5/6: HARDEN & SECURE] ---');
-  runSecurityAudit(targetDir);
+  console.log('\n[Phase 5/6: Harden] Security scan');
+  if (runSecurityAudit(targetDir).failed) outcome.failed = true;
 
-  // Phase 6: Humanize
-  console.log('\n--- [PHASE 6/6: HUMANIZE] ---');
+  console.log('\n[Phase 6/6: Humanize] Prose scan');
   runHumanizerCheck(targetDir);
 
-  console.log('\n======================================================');
-  logSuccess('THE COMPLETE SMILEU 6-PHASE PIPELINE HAS FINISHED!');
-  console.log('======================================================\n');
+  console.log('');
+  if (outcome.failed) {
+    logNotice('All checks finished with problems. Reports are in .smileu/reports/.');
+  } else {
+    logSuccess('All checks finished. Reports are in .smileu/reports/.');
+  }
+
+  return outcome;
 }

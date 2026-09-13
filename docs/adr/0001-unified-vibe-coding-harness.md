@@ -43,7 +43,7 @@ Every task follows this immutable progression:
 ```
 
 ## Consequences
-- **Positive:** Single-command installation (`npx smileu-code-skill init`) configures any workspace for all major editors (Cursor, Claude, Antigravity, Windsurf).
+- **Positive:** Single-command installation (`smileu init`) configures any workspace for all major editors (Cursor, Claude, Antigravity, Windsurf).
 - **Positive:** Built-in terminal CLI provides immediate access to all tools (`smileu audit`, `smileu craft`, `smileu graph`, `smileu swarm`, `smileu motion`, `smileu humanize`).
 - **Positive:** Zero external runtime dependencies required for the core CLI. Safe fallbacks ensure graceful degradation if optional tools like Graphify or Python are unavailable.
 - **Trade-off:** High skill volume (800+ cybersecurity skills) requires intelligent cataloging so editors remain responsive. Core meta-skills are prioritized by default.

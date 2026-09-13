@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { logSuccess, logInfo, logWarn } from '../ui.js';
+import { logSuccess, logInfo, logNotice, plural } from '../ui.js';
 import { outputPath } from '../utils/output.js';
 
-// Anti-slop frontend heuristics inspired by Impeccable & Taste-Skill
+// Design anti-pattern heuristics (after pbakaus/impeccable and Leonxlnx/taste-skill).
 const DESIGN_CHECKS = [
   {
     id: 'untinted_black',
@@ -14,27 +14,28 @@ const DESIGN_CHECKS = [
   {
     id: 'bouncy_easing',
     name: 'Sluggish Bouncy Animation',
-    regex: /(?:bounce|elastic)\b/i,
-    advice: 'Use physics-based ease-out for entering elements (e.g. cubic-bezier(0.16, 1, 0.3, 1)) and keep durations 150ms-250ms.'
+    // Leading \b so identifiers like "debounce" are not flagged.
+    regex: /\b(?:bounce|elastic)\b/i,
+    advice: 'Use ease-out for entering elements (e.g. cubic-bezier(0.16, 1, 0.3, 1)) and keep durations between 150ms and 250ms.'
   },
   {
     id: 'nested_cards',
     name: 'Nested Card Container Pattern',
     regex: /class=["'][^"']*\bcard\b[^"']*\bcard\b[^"']*["']/i,
-    advice: 'Avoid nesting cards inside cards. Use whitespace, 1px subtle divider lines, or subtle background tinting.'
+    advice: 'Avoid nesting cards inside cards. Use whitespace, 1px divider lines, or a light background tint.'
   }
 ];
 
 /**
- * Runs design craft and anti-slop checks on UI files in the target directory.
- * Reports paths relative to the current workspace root.
+ * Scans UI files for a small set of design anti-patterns. Paths in the report
+ * are relative to the workspace.
  */
 export function runDesignAudit(targetDir = process.cwd()) {
   const displayTarget = path.relative(process.cwd(), targetDir) || '.';
-  logInfo(`Running Impeccable & Anti-Slop Design Audit for workspace: ${displayTarget}`);
+  logInfo(`Scanning UI files for design anti-patterns in ${displayTarget}`);
 
   const findings = [];
-  const scannedFiles = [];
+  let scannedCount = 0;
 
   function scanDir(dir) {
     let entries;
@@ -60,22 +61,18 @@ export function runDesignAudit(targetDir = process.cwd()) {
       if (entry.isDirectory()) {
         scanDir(fullPath);
       } else if (/\.(css|scss|html|jsx|tsx|vue|svelte)$/i.test(entry.name)) {
-        scannedFiles.push(fullPath);
         let content;
         try {
           content = fs.readFileSync(fullPath, 'utf-8');
         } catch {
           continue;
         }
+        scannedCount += 1;
         const relPath = path.relative(targetDir, fullPath).replace(/\\/g, '/');
 
         for (const check of DESIGN_CHECKS) {
           if (check.regex.test(content)) {
-            findings.push({
-              file: relPath,
-              name: check.name,
-              advice: check.advice
-            });
+            findings.push({ file: relPath, name: check.name, advice: check.advice });
           }
         }
       }
@@ -85,20 +82,20 @@ export function runDesignAudit(targetDir = process.cwd()) {
   scanDir(targetDir);
 
   const reportPath = outputPath(targetDir, 'reports', 'DESIGN_AUDIT.md');
-  const reportContent = `# Impeccable & Anti-Slop Design Audit Report
+  const reportContent = `# Design Scan Report
 
-**Audit Date:** ${new Date().toISOString()}  
-**Target:** \`./${displayTarget === '.' ? '' : displayTarget}\`  
-**Files Scanned:** ${scannedFiles.length}  
-**Design Flags:** ${findings.length}
+**Date:** ${new Date().toISOString()}
+**Target:** \`./${displayTarget === '.' ? '' : displayTarget}\`
+**UI files scanned:** ${scannedCount}
+**Findings:** ${findings.length}
 
 ---
 
-## 🎨 Analysis
+## Findings
 
 ${
   findings.length === 0
-    ? '✅ **Design Craft Verified.** No design anti-patterns or generic AI slop tropes identified in frontend styles/components. Typography ramps, surface tints, and motion constraints comply with Impeccable standards.'
+    ? `No findings. Checked ${scannedCount} files for pure black (#000), bounce or elastic easing, and nested card classes.`
     : findings
         .map(
           (f, idx) => `### ${idx + 1}. [${f.name}] in \`${f.file}\`
@@ -110,21 +107,22 @@ ${
 
 ---
 
-## 📐 Impeccable Checklist Applied
-- [x] **Surface Tinting:** Check for untinted #000000 / #ffffff in styles
-- [x] **Motion Dynamics:** Verify absence of cartoonish/bouncy easings
-- [x] **Card Hierarchy:** Prevent card-in-card nesting slop
-- [x] **Typography Ramps:** Verify tabular numbers and proper line heights
+## Checks run
+- **Surface tint:** pure black \`#000\` / \`#000000\` in styles
+- **Motion:** \`bounce\` or \`elastic\` easing
+- **Card hierarchy:** a \`card\` class nested inside another \`card\` class
+
+Files scanned: .css, .scss, .html, .jsx, .tsx, .vue and .svelte.
 `;
 
   fs.writeFileSync(reportPath, reportContent, 'utf-8');
 
   const relReport = path.relative(targetDir, reportPath).replace(/\\/g, '/');
   if (findings.length === 0) {
-    logSuccess(`Design Audit: High aesthetic craft verified! Written to ${relReport}`);
+    logSuccess(`Design scan: no findings in ${plural(scannedCount, 'UI file')}. Report: ${relReport}`);
   } else {
-    logWarn(`Design Audit: ${findings.length} item(s) noted. See ${relReport}`);
+    logNotice(`Design scan: ${plural(findings.length, 'finding')} in ${plural(scannedCount, 'UI file')}. Report: ${relReport}`);
   }
 
-  return { findings, scannedCount: scannedFiles.length, reportPath };
+  return { findings, scannedCount, reportPath };
 }

@@ -22,12 +22,16 @@
   },
   "scripts": {
     "start": "node bin/cli.js",
-    "test": "node --test test/cli.test.js test/sandboxes.test.js",
-    "test:unit": "node --test test/cli.test.js",
+    "test": "node --test test/cli.test.js test/sandboxes.test.js test/release.test.js test/update.test.js",
+    "test:unit": "node --test test/cli.test.js test/release.test.js test/update.test.js",
     "test:sandboxes": "node --test test/sandboxes.test.js",
     "release": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
-    "release:major": "node scripts/release.js major"
+    "release:major": "node scripts/release.js major",
+    "test:release": "node --test test/release.test.js",
+    "release:pre": "node scripts/release.js prerelease",
+    "release:dry": "node scripts/release.js --dry-run --skip-tests",
+    "release:notes": "node scripts/release-notes.js"
   },
   "keywords": [
     "smileu",

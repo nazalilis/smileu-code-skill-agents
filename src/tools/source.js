@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { PACKAGE_ROOT, UPSTREAM_REPO } from '../config.js';
 import { logInfo, logWarn } from '../ui.js';
 
@@ -20,9 +20,9 @@ export function resolveSourceRoot({ latest = false } = {}) {
   if (!latest) return bundled;
 
   try {
-    execSync('git --version', { stdio: 'ignore' });
+    execFileSync('git', ['--version'], { stdio: 'ignore', windowsHide: true });
   } catch {
-    logWarn('--latest requires git, which was not found. Falling back to the bundled library.');
+    logWarn('--latest needs git, which was not found. Using the bundled library instead.');
     return bundled;
   }
 
@@ -30,7 +30,7 @@ export function resolveSourceRoot({ latest = false } = {}) {
   try {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'smileu-latest-'));
   } catch (err) {
-    logWarn(`Could not create a temp directory (${err.message}). Using the bundled library.`);
+    logWarn(`Could not create a temp directory (${err.code || err.message}). Using the bundled library instead.`);
     return bundled;
   }
 
@@ -43,16 +43,25 @@ export function resolveSourceRoot({ latest = false } = {}) {
   };
 
   try {
-    logInfo(`Fetching the latest reference library from ${UPSTREAM_REPO} ...`);
-    execSync(`git clone --depth 1 --quiet "${UPSTREAM_REPO}" "${tmpDir}"`, { stdio: 'ignore' });
+    logInfo(`Fetching the current library from ${UPSTREAM_REPO} ...`);
+    execFileSync('git', ['clone', '--depth', '1', '--quiet', UPSTREAM_REPO, tmpDir], {
+      stdio: 'ignore',
+      windowsHide: true,
+      timeout: 300000,
+      // Fail instead of waiting for credentials if the repository is unreachable.
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+    });
 
     if (!fs.existsSync(path.join(tmpDir, 'skills'))) {
-      throw new Error('cloned repository does not contain a skills/ directory');
+      throw new Error('the repository has no skills/ folder');
     }
     return { root: tmpDir, engine: 'latest', cleanup };
   } catch (err) {
     cleanup();
-    logWarn(`--latest fetch failed (${err.message}). Falling back to the bundled library.`);
+    let reason = (err && err.message) || 'unknown error';
+    if (err && err.code === 'ETIMEDOUT') reason = 'timed out';
+    else if (err && typeof err.status === 'number') reason = `git exited with code ${err.status}`;
+    logWarn(`Could not fetch the current library (${reason}). Using the bundled library instead.`);
     return bundled;
   }
 }
