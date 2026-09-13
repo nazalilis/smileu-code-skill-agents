@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.1.1] - 2026-09-13
+
 ### Changed
 - GitHub Actions moved to releases that run on Node.js 24 (checkout v6.1.0, setup-node
   v6.5.0, action-gh-release v3.0.3, codeql-action v4.38.0), still pinned to commit SHAs.

@@ -1,6 +1,6 @@
 {
   "name": "@nazalilis/smileu-code-skill-agents",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Smileu Code Skill - one npx command to install a unified suite of AI agents and skills (engineering, design, motion, security) into Cursor, Claude Code, Antigravity, and Windsurf.",
   "type": "module",
   "main": "src/index.js",
