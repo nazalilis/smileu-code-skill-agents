@@ -106,6 +106,8 @@ export function setupTools() {
     }
   };
 
+  // "graphifyy" (double y) is the PyPI name of Graphify-Labs/graphify; the
+  // project page links back to that repository.
   if (status.uv) {
     return attempt('uv', 'uv', ['tool', 'install', '--upgrade', 'graphifyy'], 'uv tool install graphifyy');
   }

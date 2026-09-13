@@ -198,7 +198,7 @@ export function installSkills({
   const skillsSourceDir = path.join(sourceRoot, 'skills');
   const skillsToInstall = resolveSkillList(scope, skillsSourceDir, results);
   const skillDestBases = editors.map((e) => path.join(targetDir, EDITOR_TARGETS[e].skills));
-  results.destinations = skillDestBases.map((d) => path.relative(targetDir, d));
+  results.destinations = skillDestBases.map((d) => path.relative(targetDir, d).replace(/\\/g, '/'));
 
   const total = skillsToInstall.length * skillDestBases.length;
   let done = 0;

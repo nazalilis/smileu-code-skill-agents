@@ -2,18 +2,27 @@ name: Release & Publish Package
 
 # This workflow never commits to the repository and never opens pull requests.
 # The version bump is always a commit you make yourself (for example with
-# "npm run release:minor"). The workflow only tags, creates the GitHub Release
-# and publishes the package.
+# "npm run release:minor"). The workflow only tags, publishes the package and
+# creates the GitHub Release.
 #
 # It releases when:
 # 1. a push to main changes the version in package.json to one without a tag, or
-# 2. a vX.Y.Z tag is pushed.
+# 2. a vX.Y.Z tag is pushed (for example with "git push origin main --follow-tags").
 #
-# "Run workflow" in the Actions tab releases the version already in package.json,
-# which is useful to retry a failed release. Tick "dry run" to only see the plan.
+# "Run workflow" in the Actions tab releases the version already in package.json.
+# Use it to retry a release that failed after its tag was created; tick "dry run"
+# to only see the plan.
 #
-# Re-running is safe: an existing GitHub Release is updated in place, and a
-# version that is already on the registry is skipped instead of failing.
+# Published to:
+# - GitHub Packages as @nazalilis/smileu-code-skill (always), and
+# - the public npm registry as smileu-code-skill when the NPM_TOKEN secret is set,
+#   so users can run "npx smileu-code-skill". Override the npm name with the
+#   NPM_PACKAGE_NAME repository variable.
+#
+# Re-running is safe: an existing tag on the same commit is reused, a version that
+# is already on a registry is skipped, and an existing GitHub Release is updated.
+#
+# Actions are pinned to full commit SHAs; the comment names the release.
 
 on:
   push:
@@ -32,8 +41,10 @@ on:
 permissions:
   contents: read
 
+# One group per commit: the branch run and the tag run for the same commit are
+# serialised, while a later push can never cancel a release that is queued.
 concurrency:
-  group: release
+  group: release-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -49,12 +60,13 @@ jobs:
       needs_tag: ${{ steps.plan.outputs.needs_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
 
@@ -66,6 +78,16 @@ jobs:
           set -euo pipefail
 
           CURRENT="$(node -p "require('./package.json').version")"
+          if ! [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::package.json version is not a valid semantic version."
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Commit $GITHUB_SHA is not on main. Releases are cut from main only."
+            exit 1
+          fi
+
           NEEDS_TAG=false
           SHOULD_RELEASE=true
           SKIP_REASON=""
@@ -77,12 +99,9 @@ jobs:
               exit 1
             fi
           else
-            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
-              echo "::error::Releases run from main only; this run is on $GITHUB_REF."
-              exit 1
-            fi
-
             VERSION="$CURRENT"
+            TAG_SHA="$(git rev-parse -q --verify "refs/tags/v$VERSION^{commit}" || true)"
+
             # On a push, release only when this push actually changed the version.
             # Editing scripts or dependencies in package.json must not publish.
             PREVIOUS=""
@@ -90,9 +109,19 @@ jobs:
               PREVIOUS="$(git show "$BEFORE_SHA:package.json" 2> /dev/null | node -p "JSON.parse(require('fs').readFileSync(0, 'utf-8')).version" 2> /dev/null || true)"
             fi
 
-            if git rev-parse -q --verify "refs/tags/v$VERSION" > /dev/null; then
+            if [ -n "$TAG_SHA" ] && [ "$TAG_SHA" != "$GITHUB_SHA" ]; then
+              if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+                echo "::error::v$VERSION is already tagged on a different commit ($TAG_SHA)."
+                exit 1
+              fi
               SHOULD_RELEASE=false
-              SKIP_REASON="v$VERSION is already tagged."
+              SKIP_REASON="v$VERSION is already tagged on a different commit."
+            elif [ -n "$TAG_SHA" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+              SHOULD_RELEASE=false
+              SKIP_REASON="v$VERSION is tagged on this commit; the run for the tag push releases it."
+            elif [ -n "$TAG_SHA" ]; then
+              # Manual retry of a release whose tag already exists on this commit.
+              NEEDS_TAG=false
             elif [ -n "$PREVIOUS" ] && [ "$PREVIOUS" = "$VERSION" ]; then
               SHOULD_RELEASE=false
               SKIP_REASON="package.json changed, but the version is still $VERSION."
@@ -134,10 +163,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
@@ -162,17 +193,21 @@ jobs:
       TAG: ${{ needs.plan.outputs.tag }}
       PRERELEASE: ${{ needs.plan.outputs.prerelease }}
       PACKAGE_NAME: '@nazalilis/smileu-code-skill'
-      # Secrets are not available in step-level `if:` expressions. Mapping the
-      # secret into env here is what makes `if: env.NPM_TOKEN != ''` work below.
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NPM_PACKAGE_NAME: ${{ vars.NPM_PACKAGE_NAME || 'smileu-code-skill' }}
+      # Only whether the secret exists is shared with every step. The token itself
+      # is mapped into the environment of the npm publish step alone.
+      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          # No git credentials stay behind for later steps; the tag is created
+          # through the API with a token scoped to that one step.
+          persist-credentials: false
 
       - name: Set up Node.js for GitHub Packages
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           registry-url: 'https://npm.pkg.github.com'
@@ -180,33 +215,25 @@ jobs:
 
       - name: Tag the released commit
         if: needs.plan.outputs.needs_tag == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # A lightweight tag carries no tagger identity, so no bot name is
-          # recorded in the repository history.
-          git tag "$TAG" "$GITHUB_SHA"
-          git push origin "refs/tags/$TAG"
-
-      - name: Prepare release notes
-        run: |
-          if ! node scripts/release-notes.js "$VERSION" > RELEASE_NOTES.md; then
-            : > RELEASE_NOTES.md
+          EXISTING="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" || true)"
+          if [ -z "$EXISTING" ]; then
+            EXISTING="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha 2> /dev/null || true)"
           fi
-
-      - name: Create or update GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG }}
-          name: Smileu Code Skill ${{ env.TAG }}
-          body_path: RELEASE_NOTES.md
-          draft: false
-          prerelease: ${{ env.PRERELEASE == 'true' }}
-          make_latest: ${{ env.PRERELEASE == 'true' && 'false' || 'true' }}
-          # Commit-level notes are appended to the changelog section, or used on
-          # their own when the changelog has no section for this version.
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if [ "$EXISTING" = "$GITHUB_SHA" ]; then
+            echo "$TAG already points at this commit."
+            exit 0
+          fi
+          if [ -n "$EXISTING" ]; then
+            echo "::error::$TAG already exists on a different commit ($EXISTING)."
+            exit 1
+          fi
+          # A lightweight tag created through the API carries no tagger identity.
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA" > /dev/null
+          echo "Created tag $TAG at $GITHUB_SHA."
 
       - name: Publish to GitHub Packages
         env:
@@ -222,21 +249,71 @@ jobs:
           npm publish --tag "$DIST_TAG"
           echo "Published $PACKAGE_NAME@$VERSION to GitHub Packages (dist-tag: $DIST_TAG)." | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish to the npm registry (optional)
-        if: env.NPM_TOKEN != ''
-        continue-on-error: true
+      - name: Publish to the npm registry
+        if: env.HAS_NPM_TOKEN == 'true'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           NPMJS=https://registry.npmjs.org
-          if npm view "$PACKAGE_NAME@$VERSION" version --registry "$NPMJS" > /dev/null 2>&1; then
-            echo "$PACKAGE_NAME@$VERSION is already on npm. Skipping." | tee -a "$GITHUB_STEP_SUMMARY"
+          if npm view "$NPM_PACKAGE_NAME@$VERSION" version --registry "$NPMJS" > /dev/null 2>&1; then
+            echo "$NPM_PACKAGE_NAME@$VERSION is already on npm. Skipping." | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "$NPM_CONFIG_USERCONFIG"
-          # publishConfig and the project .npmrc both pin the scope to GitHub
-          # Packages. Override them for this one publish; the change is never committed.
-          npm pkg delete publishConfig.registry
+          # setup-node's .npmrc does not end with a newline, so start a new line
+          # first. The single quotes keep ${NPM_TOKEN} literal: npm expands it when
+          # it reads the file, so the token itself is never written to disk.
+          printf '\n%s\n' '//registry.npmjs.org/:_authToken=${NPM_TOKEN}' >> "$NPM_CONFIG_USERCONFIG"
+          # GitHub Packages needs the scoped name and its registry in package.json.
+          # On npm the package goes out under an unscoped name so that
+          # "npx smileu-code-skill" works. These edits exist only in this CI
+          # checkout and are never committed.
+          npm pkg set "name=$NPM_PACKAGE_NAME"
+          npm pkg delete publishConfig
           DIST_TAG=latest
           if [ "$PRERELEASE" = "true" ]; then DIST_TAG=next; fi
-          npm publish --access public --tag "$DIST_TAG" --registry "$NPMJS" "--@nazalilis:registry=$NPMJS"
-          echo "Published $PACKAGE_NAME@$VERSION to npm (dist-tag: $DIST_TAG)." | tee -a "$GITHUB_STEP_SUMMARY"
+          npm publish --access public --tag "$DIST_TAG" --registry "$NPMJS"
+          echo "Published $NPM_PACKAGE_NAME@$VERSION to npm (dist-tag: $DIST_TAG). Run it with: npx $NPM_PACKAGE_NAME" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Note when npm publishing is not configured
+        if: env.HAS_NPM_TOKEN != 'true'
+        run: |
+          echo "NPM_TOKEN is not set, so $NPM_PACKAGE_NAME was not published to npm and 'npx $NPM_PACKAGE_NAME' will not work yet." | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare release notes
+        run: |
+          if ! node scripts/release-notes.js "$VERSION" > RELEASE_NOTES.md; then
+            : > RELEASE_NOTES.md
+          fi
+          # Only point people at a registry the package was actually published to.
+          {
+            echo ""
+            echo "### Install"
+            echo ""
+            echo '```bash'
+            if [ "$HAS_NPM_TOKEN" = "true" ]; then
+              echo "npx $NPM_PACKAGE_NAME@$VERSION init"
+            else
+              echo "npm install -g $PACKAGE_NAME@$VERSION"
+            fi
+            echo '```'
+            if [ "$HAS_NPM_TOKEN" != "true" ]; then
+              echo ""
+              echo "Installing from GitHub Packages requires logging in to npm.pkg.github.com first."
+            fi
+          } >> RELEASE_NOTES.md
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Smileu Code Skill ${{ env.TAG }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ env.PRERELEASE == 'true' }}
+          make_latest: ${{ env.PRERELEASE == 'true' && 'false' || 'true' }}
+          # Commit-level notes are appended to the changelog section, or used on
+          # their own when the changelog has no section for this version.
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

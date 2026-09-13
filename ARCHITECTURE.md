@@ -42,7 +42,7 @@ smileu <command>  (bin/cli.js)
 - **`src/utils/output.js`**: creates `.smileu/<sub>/` and adds `.smileu/` to `.gitignore`.
 - **`src/utils/manifest.js`**: reads and merges `.smileu/manifest.json` (CLI version, source, scope, editors, skills).
 - **`src/utils/semver.js`**: version parsing, bumping and comparison, shared by the CLI and the release scripts.
-- **`src/tools/update.js`**: finds installed skills per editor layout, rewrites files whose sha256 differs, never writes through symlinks, and queries the GitHub Releases API for `--check`.
+- **`src/tools/update.js`**: finds installed skills per editor layout, rewrites files whose sha256 differs, never writes through symlinks, and queries the npm registry, then GitHub Releases, for `--check`.
 - **`src/tools/source.js`**: returns the bundled library, or a temporary shallow clone for `--latest` that is deleted afterwards.
 - **`src/tools/security.js`**, **`design.js`**, **`humanizer.js`**: regex-based scans that write Markdown reports. Only the security scan can fail a command.
 - **`src/tools/graphify.js`**: runs native Graphify when available, otherwise a built-in scanner that records files and their import specifiers.
@@ -70,5 +70,5 @@ Every external program (`git`, `graphify`, `uv`, `python`) is started with an ar
 
 - **`scripts/release.js`** cuts a release locally: checks the tree, runs the tests, bumps `package.json` and `package-lock.json`, moves `[Unreleased]` in `CHANGELOG.md` into a dated section, commits, tags, and optionally pushes.
 - **`scripts/release-notes.js`** prints one version's changelog section.
-- **`.github/workflows/release.yml`** plans the release (from a pushed tag or a version change on `main`), runs the tests, tags, creates or updates the GitHub Release, and publishes to GitHub Packages and, with `NPM_TOKEN`, to npm. Already-published versions are skipped. It never commits to the repository; version bumps are always your own commits.
+- **`.github/workflows/release.yml`** plans the release (from a pushed tag or a version change on `main`), runs the tests, tags, creates or updates the GitHub Release, and publishes `@nazalilis/smileu-code-skill` to GitHub Packages and, with `NPM_TOKEN`, `smileu-code-skill` to npm. Already-published versions are skipped. It never commits to the repository; version bumps are always your own commits.
 - **`.github/workflows/ci.yml`** runs the tests on Linux, Windows and macOS with Node.js 18, 20 and 22, and checks the contents of the publishable tarball.

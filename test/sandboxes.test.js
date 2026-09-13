@@ -1,19 +1,21 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const ROOT_DIR = path.resolve('.');
-const CLI_PATH = path.resolve('bin/cli.js');
-const LIBRARY_DIR = path.join(ROOT_DIR, 'skills');
-const SANDBOX_BASE = path.join(ROOT_DIR, '.test-sandboxes');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const CLI_PATH = path.join(ROOT, 'bin', 'cli.js');
+const LIBRARY_DIR = path.join(ROOT, 'skills');
 
-// Ensure a clean sandbox base directory.
-if (fs.existsSync(SANDBOX_BASE)) {
+// Sandboxes live in the OS temp directory and are removed after the run, so the
+// test suite never leaves folders behind in the repository.
+const SANDBOX_BASE = fs.mkdtempSync(path.join(os.tmpdir(), 'smileu-sandboxes-'));
+after(() => {
   fs.rmSync(SANDBOX_BASE, { recursive: true, force: true });
-}
-fs.mkdirSync(SANDBOX_BASE, { recursive: true });
+});
 
 function run(args, cwd, input = '') {
   const result = spawnSync(process.execPath, [CLI_PATH, ...args], {
@@ -44,6 +46,13 @@ test('Sandbox 1: Frontend workspace install, clean root, and design scan', () =>
   assert.ok(fs.existsSync(path.join(sandbox, 'DESIGN.md')));
   assert.ok(fs.existsSync(path.join(sandbox, '.smileu', 'manifest.json')), 'install records a manifest');
 
+  // Only the chosen editor and scope are installed.
+  for (const other of ['.claude', '.agent', '.skills', 'CLAUDE.md', '.windsurfrules']) {
+    assert.ok(!fs.existsSync(path.join(sandbox, other)), `${other} must not be created for a Cursor install`);
+  }
+  assert.equal(fs.readdirSync(path.join(sandbox, '.cursor', 'rules')).length, 9);
+  assert.equal(fs.readdirSync(path.join(sandbox, '.cursor', 'agents')).filter((f) => f.endsWith('.md')).length, 12);
+
   assert.match(run(['motion'], sandbox).stdout, /ease-out/);
 
   // A clean scan writes its report into .smileu/, never the root.
@@ -53,8 +62,10 @@ test('Sandbox 1: Frontend workspace install, clean root, and design scan', () =>
   assert.ok(fs.existsSync(path.join(sandbox, '.smileu', 'reports', 'DESIGN_AUDIT.md')));
   assert.ok(!fs.existsSync(path.join(sandbox, 'DESIGN_AUDIT.md')), 'root must stay clean');
 
+  // Running scans again does not add the .gitignore rule twice.
+  run(['craft'], sandbox);
   const gitignore = fs.readFileSync(path.join(sandbox, '.gitignore'), 'utf-8');
-  assert.match(gitignore, /\.smileu\//);
+  assert.equal((gitignore.match(/^\.smileu\/$/gm) || []).length, 1);
 
   // Inject two design anti-patterns and confirm both are flagged.
   const badComponent = path.join(sandbox, 'Hero.jsx');
@@ -96,7 +107,7 @@ test('Sandbox 2: Backend workspace install, persona preservation, swarm, and sec
   assert.equal(swarm.status, 0);
   assert.match(swarm.stdout, /Lead Architect/);
   assert.match(swarm.stdout, /Security Guardian/);
-  assert.ok(fs.existsSync(path.join(sandbox, '.smileu', 'tasks')));
+  assert.equal(fs.readdirSync(path.join(sandbox, '.smileu', 'tasks')).length, 1);
   assert.ok(!fs.existsSync(path.join(sandbox, '.agent', 'tasks')));
 
   // A hardcoded secret plus eval() fails the scan with exit code 1.
@@ -110,7 +121,9 @@ test('Sandbox 2: Backend workspace install, persona preservation, swarm, and sec
   assert.equal(flagged.status, 1);
   assert.match(flagged.stdout, /Security scan: \d+ findings/);
   const auditReport = fs.readFileSync(path.join(sandbox, '.smileu', 'reports', 'SECURITY_AUDIT.md'), 'utf-8');
-  assert.match(auditReport, /Potential Hardcoded Secret/);
+  // One finding for the file, naming both patterns the same value matched.
+  assert.match(auditReport, /Potential Hardcoded Secret \(Generic API Key, OpenAI API Key\)/);
+  assert.equal((auditReport.match(/Potential Hardcoded Secret/g) || []).length, 1);
   assert.match(auditReport, /eval\(\) Execution/);
   assert.ok(!fs.existsSync(path.join(sandbox, 'SECURITY_AUDIT.md')), 'root must stay clean');
   fs.unlinkSync(vulnerable);
@@ -148,7 +161,11 @@ test('Sandbox 3: Single-skill add, path-traversal guard, and full pipeline', () 
   const add = run(['add', 'domain-modeling'], sandbox);
   assert.equal(add.status, 0, add.stderr);
   assert.match(add.stdout, /domain-modeling/);
-  assert.ok(fs.existsSync(path.join(sandbox, '.claude', 'skills', 'domain-modeling', 'SKILL.md')));
+  for (const skillsDir of ['.claude/skills', '.cursor/rules', '.agent/skills', '.skills']) {
+    assert.ok(fs.existsSync(path.join(sandbox, skillsDir, 'domain-modeling', 'SKILL.md')), `${skillsDir} has the skill`);
+    assert.ok(fs.existsSync(path.join(sandbox, skillsDir, 'smileu-code-skill', 'SKILL.md')), `${skillsDir} has the master skill`);
+  }
+  assert.ok(!fs.existsSync(path.join(sandbox, 'PRODUCT.md')), '"add" does not write project templates');
 
   const traversal = run(['add', '../../etc/passwd'], sandbox);
   assert.equal(traversal.status, 1);
@@ -258,6 +275,12 @@ test('Sandbox 6: grill reads piped answers, backs up existing documents, and sto
     fs.readFileSync(path.join(sandbox, '.smileu', 'backups', backups[0]), 'utf-8'),
     '# My hand-written product doc\n'
   );
+
+  // The same answers again change nothing and create no second backup.
+  const repeat = run(['grill'], sandbox, answers);
+  assert.equal(repeat.status, 0);
+  assert.match(repeat.stdout, /PRODUCT\.md already matches these answers/);
+  assert.equal(fs.readdirSync(path.join(sandbox, '.smileu', 'backups')).length, 1);
 
   const short = run(['grill'], sandbox, 'Only one answer\n');
   assert.equal(short.status, 2);

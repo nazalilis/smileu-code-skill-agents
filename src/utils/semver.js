@@ -5,7 +5,17 @@
  * test suite can exercise every branch without touching the filesystem or git.
  */
 
-const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/;
+// Grammar from semver.org 2.0.0: no leading zeros in numeric identifiers and no
+// empty identifiers in the prerelease or build part.
+const NUMERIC = '0|[1-9]\\d*';
+const PRERELEASE_ID = '(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)';
+const BUILD_ID = '[0-9A-Za-z-]+';
+const SEMVER = new RegExp(
+  `^(${NUMERIC})\\.(${NUMERIC})\\.(${NUMERIC})` +
+    `(?:-(${PRERELEASE_ID}(?:\\.${PRERELEASE_ID})*))?` +
+    `(?:\\+(${BUILD_ID}(?:\\.${BUILD_ID})*))?$`
+);
+const PREID = new RegExp(`^${PRERELEASE_ID}$`);
 
 export const RELEASE_TYPES = Object.freeze([
   'patch',
@@ -23,7 +33,7 @@ export const RELEASE_TYPES = Object.freeze([
  */
 export function parseVersion(version) {
   if (typeof version !== 'string') {
-    throw new TypeError(`Version must be a string, received ${typeof version}.`);
+    throw new TypeError(`Version must be a string, received ${version === null ? 'null' : typeof version}.`);
   }
 
   const match = SEMVER.exec(version.trim());
@@ -56,19 +66,30 @@ export function formatVersion({ major, minor, patch, prerelease = [] }) {
  *   incrementing twice (1.2.0-beta.1 + patch -> 1.2.0).
  * - prerelease increments the trailing numeric identifier, or starts at 0 when
  *   the current version is stable.
- * - `preid` names the prerelease channel (beta, rc, next). Default: "beta".
+ * - `type` may also be an explicit target version, with or without a "v".
+ * - `preid` names the prerelease channel (beta, rc, next) and is only used, and
+ *   only validated, for the pre* types. Default: "beta".
  */
 export function bumpVersion(current, type, preid = 'beta') {
+  if (typeof type !== 'string' || !type.trim()) {
+    throw new TypeError(`Release type must be one of ${RELEASE_TYPES.join(', ')}, or an explicit version.`);
+  }
+
   const parsed = parseVersion(current);
   const isPrerelease = parsed.prerelease.length > 0;
 
   if (!RELEASE_TYPES.includes(type)) {
-    // An explicit target version is a valid "type" too; validate and return it.
-    return formatVersion(parseVersion(type.replace(/^v/, '')));
+    const target = type.trim().replace(/^v/, '');
+    if (!SEMVER.test(target)) {
+      throw new Error(
+        `Unknown release type or invalid version: "${type}". Use ${RELEASE_TYPES.join(', ')}, or a version like 2.0.0.`
+      );
+    }
+    return formatVersion(parseVersion(target));
   }
 
-  if (!/^[0-9A-Za-z-]+$/.test(preid)) {
-    throw new Error(`Invalid prerelease identifier: "${preid}".`);
+  if (type.startsWith('pre') && (typeof preid !== 'string' || !PREID.test(preid))) {
+    throw new Error(`Invalid prerelease identifier: "${preid}". Use letters, digits and hyphens, e.g. beta or rc.`);
   }
 
   switch (type) {
@@ -106,10 +127,7 @@ export function bumpVersion(current, type, preid = 'beta') {
         return formatVersion({ ...parsed, prerelease: [preid, 0] });
       }
 
-      const lastNumericIdx = rest.reduce(
-        (acc, part, idx) => (/^\d+$/.test(part) ? idx : acc),
-        -1
-      );
+      const lastNumericIdx = rest.reduce((acc, part, idx) => (/^\d+$/.test(part) ? idx : acc), -1);
       if (lastNumericIdx === -1) {
         return formatVersion({ ...parsed, prerelease: [...parsed.prerelease, 0] });
       }
@@ -135,7 +153,8 @@ export function isPrerelease(version) {
 
 /**
  * Compares two versions. Returns -1, 0 or 1 so results can feed Array#sort.
- * Prerelease versions sort below their stable counterpart, per the spec.
+ * Prerelease versions sort below their stable counterpart, per the spec; build
+ * metadata is ignored.
  */
 export function compareVersions(a, b) {
   const left = parseVersion(a);

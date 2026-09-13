@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { PACKAGE_ROOT, EDITOR_TARGETS, GITHUB_REPO } from '../config.js';
+import { PACKAGE_ROOT, EDITOR_TARGETS, GITHUB_REPO, NPM_PACKAGE_NAME } from '../config.js';
 import { listSkillIds } from '../installer.js';
 import { compareVersions, parseVersion } from '../utils/semver.js';
 
@@ -217,6 +217,22 @@ export function updateWorkspace({
   return result;
 }
 
+function isTimeout(err) {
+  return Boolean(err && (err.name === 'TimeoutError' || err.name === 'AbortError'));
+}
+
+// Text that came from a server is printed in the terminal. Control characters are
+// dropped so a response cannot move the cursor, change colours or clear the screen.
+function printable(value) {
+  return String(value).replace(/[\u0000-\u001f\u007f-\u009f]/g, '').slice(0, 100);
+}
+
+function safeUrl(value, prefix) {
+  return typeof value === 'string' && value.startsWith(prefix) && !/[\s\u0000-\u001f\u007f-\u009f]/.test(value)
+    ? value
+    : null;
+}
+
 /**
  * Looks up the latest published GitHub Release. Never throws: every failure
  * (offline, rate-limited, private repository, no release yet) comes back as
@@ -263,18 +279,24 @@ export async function fetchLatestRelease({
   let body;
   try {
     body = await response.json();
-  } catch {
-    return { ok: false, reason: 'GitHub returned a response that was not valid JSON.' };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: isTimeout(err)
+        ? `GitHub did not finish answering within ${Math.round(timeoutMs / 1000)}s.`
+        : 'GitHub returned a response that was not valid JSON.'
+    };
   }
 
-  const version = String((body && body.tag_name) || '').replace(/^v/, '');
+  const tag = String((body && body.tag_name) || '');
+  const version = tag.replace(/^v/, '');
   try {
     parseVersion(version);
   } catch {
-    return { ok: false, reason: `The latest release tag "${body && body.tag_name}" is not a version.` };
+    return { ok: false, reason: `The latest release tag "${printable(tag)}" is not a version.` };
   }
 
-  return { ok: true, version, url: typeof body.html_url === 'string' ? body.html_url : null };
+  return { ok: true, version, url: safeUrl(body.html_url, 'https://github.com/') };
 }
 
 /**
@@ -286,4 +308,89 @@ export function compareToLatest(current, latest) {
   if (order < 0) return 'outdated';
   if (order > 0) return 'ahead';
   return 'current';
+}
+
+/**
+ * Looks up the `latest` dist-tag on the public npm registry. The registry is
+ * readable without credentials, so this works even when the GitHub repository
+ * is private. Never throws; failures come back as `{ ok: false, reason }`.
+ */
+export async function fetchLatestNpmVersion({
+  name = NPM_PACKAGE_NAME,
+  timeoutMs = 5000,
+  fetchImpl = globalThis.fetch
+} = {}) {
+  if (typeof fetchImpl !== 'function') {
+    return { ok: false, reason: 'This Node.js runtime has no fetch API. Use Node.js 18 or newer.' };
+  }
+
+  // Scoped names are requested as "@scope%2Fname".
+  const encoded = encodeURIComponent(name).replace(/^%40/, '@');
+  let response;
+  try {
+    response = await fetchImpl(`https://registry.npmjs.org/${encoded}/latest`, {
+      headers: { Accept: 'application/json', 'User-Agent': 'smileu-code-skill' },
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+  } catch (err) {
+    const timedOut = err && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    return {
+      ok: false,
+      reason: timedOut
+        ? `The npm registry did not answer within ${Math.round(timeoutMs / 1000)}s.`
+        : 'Could not reach the npm registry. Check your network connection.'
+    };
+  }
+
+  if (response.status === 404) {
+    return { ok: false, reason: `${name} is not published on the npm registry yet.` };
+  }
+  if (!response.ok) {
+    return { ok: false, reason: `The npm registry responded with HTTP ${response.status}.` };
+  }
+
+  let body;
+  try {
+    body = await response.json();
+  } catch (err) {
+    return {
+      ok: false,
+      reason: isTimeout(err)
+        ? `The npm registry did not finish answering within ${Math.round(timeoutMs / 1000)}s.`
+        : 'The npm registry returned a response that was not valid JSON.'
+    };
+  }
+
+  const version = String((body && body.version) || '');
+  try {
+    parseVersion(version);
+  } catch {
+    return { ok: false, reason: `The npm registry reported "${printable(version)}", which is not a version.` };
+  }
+
+  return { ok: true, version, url: `https://www.npmjs.com/package/${name}` };
+}
+
+/**
+ * Finds the newest published version by asking the npm registry and GitHub
+ * Releases at the same time, and reports the higher of the two. npm wins a tie,
+ * because its install command needs no login. Returns
+ * `{ ok, version, url, source }`, or `{ ok: false, reasons }` with one reason per
+ * source.
+ */
+export async function checkForUpdate({ fetchImpl = globalThis.fetch, timeoutMs = 5000 } = {}) {
+  const [npm, github] = await Promise.all([
+    fetchLatestNpmVersion({ fetchImpl, timeoutMs }),
+    fetchLatestRelease({ fetchImpl, timeoutMs })
+  ]);
+
+  if (npm.ok && github.ok) {
+    return compareVersions(github.version, npm.version) > 0
+      ? { ...github, source: 'github' }
+      : { ...npm, source: 'npm' };
+  }
+  if (npm.ok) return { ...npm, source: 'npm' };
+  if (github.ok) return { ...github, source: 'github' };
+
+  return { ok: false, reasons: [npm.reason, github.reason] };
 }

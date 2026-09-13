@@ -169,7 +169,9 @@ if (branch !== 'main' && !options.anyBranch) {
   );
 }
 
-const dirty = git(['status', '--porcelain'], { capture: true }).trim();
+// Untracked files never end up in the release commit (only the version files
+// are staged), so only changes to tracked files block a release.
+const dirty = git(['status', '--porcelain', '--untracked-files=no'], { capture: true }).trim();
 if (dirty && !options.dryRun) {
   fail(
     'The working tree has uncommitted changes.',

@@ -1,15 +1,25 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const CLI_PATH = path.resolve('bin/cli.js');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const CLI_PATH = path.join(ROOT, 'bin', 'cli.js');
+
+// The repository-level scans below write reports into .smileu/. Remove the
+// folder again afterwards, unless it already existed before the tests ran.
+const REPO_OUTPUT_DIR = path.join(ROOT, '.smileu');
+const repoOutputExisted = fs.existsSync(REPO_OUTPUT_DIR);
+after(() => {
+  if (!repoOutputExisted) fs.rmSync(REPO_OUTPUT_DIR, { recursive: true, force: true });
+});
 
 // Runs the CLI without a shell and captures stdout, stderr and the exit code.
 // stdin is a pipe, never a TTY, so no command can stop to prompt.
-function cli(args, { cwd = process.cwd(), input = '' } = {}) {
+function cli(args, { cwd = ROOT, input = '' } = {}) {
   const result = spawnSync(process.execPath, [CLI_PATH, ...args], {
     cwd,
     input,
@@ -31,14 +41,29 @@ function withTempDir(fn) {
 test('--version prints only the version line', () => {
   const { status, stdout } = cli(['--version']);
   assert.equal(status, 0);
-  assert.match(stdout, /^smileu-code-skill version \d+\.\d+\.\d+/);
-  assert.equal(stdout.trim().split(/\r?\n/).length, 1, 'no banner or extra lines');
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
+  assert.equal(stdout.trim(), `smileu-code-skill version ${pkg.version}`);
+});
+
+test('-v and --version work anywhere on the command line and never run the command', () => {
+  withTempDir((dir) => {
+    for (const args of [['swarm', 'Build login', '-v'], ['init', '--dry-run', '--version', '-y']]) {
+      const { status, stdout } = cli(args, { cwd: dir });
+      assert.equal(status, 0, args.join(' '));
+      assert.match(stdout, /^smileu-code-skill version \d+\.\d+\.\d+\s*$/, args.join(' '));
+    }
+    assert.deepEqual(fs.readdirSync(dir), [], 'the command itself did not run');
+
+    const quoted = cli(['swarm', 'fix the -v flag'], { cwd: dir });
+    assert.match(quoted.stdout, /Task plan: fix the -v flag/, 'a quoted task containing -v is not the flag');
+  });
 });
 
 test('--help documents every command, the update options and exit codes', () => {
   const { status, stdout } = cli(['--help']);
   assert.equal(status, 0);
   assert.match(stdout, /Usage: smileu <command> \[options\]/);
+  assert.match(stdout, /npx smileu-code-skill <command>/);
   for (const command of ['init', 'add', 'update', 'audit', 'craft', 'humanize', 'graph', 'run-all', 'grill', 'swarm', 'motion', 'doctor', 'list', 'repos']) {
     assert.match(stdout, new RegExp(`\\n  ${command}\\b`), `help lists "${command}"`);
   }
@@ -60,7 +85,8 @@ test('list shows the core skills and the library size', () => {
   for (const id of ['smileu-code-skill', 'engineering-alignment', 'codebase-knowledge-graph', 'frontend-taste', 'cybersecurity-hardening']) {
     assert.match(stdout, new RegExp(`\\b${id}\\b`));
   }
-  assert.match(stdout, /The bundled library has \d{3,} skills in total/);
+  const librarySize = fs.readdirSync(path.join(ROOT, 'skills')).filter((d) => fs.existsSync(path.join(ROOT, 'skills', d, 'SKILL.md'))).length;
+  assert.match(stdout, new RegExp(`The bundled library has ${librarySize} skills in total`));
 });
 
 test('list --all prints skill names, filters them, and fails when nothing matches', () => {
@@ -84,8 +110,8 @@ test('repos lists the upstream projects', () => {
 test('motion prints presets, one preset on request, and rejects unknown names', () => {
   const all = cli(['motion']);
   assert.equal(all.status, 0);
-  assert.match(all.stdout, /ease-out/);
-  assert.match(all.stdout, /ease-in/);
+  assert.match(all.stdout, /\[enter\][\s\S]*ease-out/);
+  assert.match(all.stdout, /\[exit\][\s\S]*ease-in/);
   assert.match(all.stdout, /Framer Motion/);
 
   const one = cli(['motion', 'enter']);
@@ -124,6 +150,9 @@ test('swarm writes a five-role plan and requires a task', () => {
       assert.ok(stdout.includes(role), `plan includes ${role}`);
     }
     assert.match(stdout, /Task plan saved to \.smileu\/tasks\/task-/);
+    const plans = fs.readdirSync(path.join(dir, '.smileu', 'tasks'));
+    assert.equal(plans.length, 1);
+    assert.match(fs.readFileSync(path.join(dir, '.smileu', 'tasks', plans[0]), 'utf-8'), /^# Task Plan: Test task/);
 
     const missing = cli(['swarm'], { cwd: dir });
     assert.equal(missing.status, 2);
@@ -204,17 +233,83 @@ test('editor names that are Object prototype keys are rejected, not crashed on',
   });
 });
 
-test('scanners avoid known false positives and catch word variants', () => {
+test('design and prose scans avoid known false positives and catch real patterns', () => {
   withTempDir((dir) => {
     fs.writeFileSync(path.join(dir, 'Search.jsx'), "import debounce from 'lodash.debounce';\nexport const s = debounce(() => {}, 200);\n");
-    const craft = cli(['craft'], { cwd: dir });
-    assert.equal(craft.status, 0);
-    assert.match(craft.stdout, /Design scan: no findings in 1 UI file/, '"debounce" is not a bounce animation');
+    fs.writeFileSync(path.join(dir, 'Card.html'), '<div class="card card-body">\n  <h2 class="card-title">Title</h2>\n</div>\n');
+    fs.writeFileSync(path.join(dir, 'SelfClosing.jsx'), 'export const S = () => (\n  <>\n    <div className="card" />\n    <div className="card">Sibling, not nested</div>\n  </>\n);\n');
+    fs.writeFileSync(path.join(dir, 'Void.html'), '<img class="card" src="a.png">\n<div class="card">Sibling</div>\n');
+    fs.writeFileSync(path.join(dir, 'Toggle.vue'), '<template>\n  <span :class="{ card: false }"><div class="card">Only one card</div></span>\n</template>\n');
+    const clean = cli(['craft'], { cwd: dir });
+    assert.equal(clean.status, 0);
+    assert.match(
+      clean.stdout,
+      /Design scan: no findings in 5 UI files/,
+      '"debounce", "card-body", self-closing tags, void elements and Vue :class bindings are not nested cards'
+    );
+
+    fs.writeFileSync(path.join(dir, 'Nested.jsx'), 'export const N = () => (\n  <div className="card">\n    <div className="card">Inner</div>\n  </div>\n);\n');
+    const nested = cli(['craft'], { cwd: dir });
+    assert.match(nested.stdout, /Design scan: 1 finding in 6 UI files/);
+    const report = fs.readFileSync(path.join(dir, '.smileu', 'reports', 'DESIGN_AUDIT.md'), 'utf-8');
+    assert.match(report, /\[Nested Card Container Pattern\] in `Nested\.jsx`/);
 
     fs.writeFileSync(path.join(dir, 'NOTES.md'), 'We are delving into the details.\n');
     const prose = cli(['humanize'], { cwd: dir });
     assert.equal(prose.status, 0);
     assert.match(prose.stdout, /Prose scan: 1 match in 1 Markdown file/);
+  });
+});
+
+test('security scan catches a multi-line shell: true and reports one finding per secret file', () => {
+  withTempDir((dir) => {
+    fs.writeFileSync(path.join(dir, 'run.js'), "const cp = require('child_process');\ncp.exec(command, {\n  shell: true\n});\n");
+    fs.writeFileSync(path.join(dir, '.env'), 'API_KEY="abcdefghijklmnop1234"\n');
+
+    const audit = cli(['audit'], { cwd: dir });
+    assert.equal(audit.status, 1);
+    assert.match(audit.stdout, /Security scan: 2 findings in 2 files/);
+
+    const report = fs.readFileSync(path.join(dir, '.smileu', 'reports', 'SECURITY_AUDIT.md'), 'utf-8');
+    assert.match(report, /\[HIGH\] Unsafe shell spawn/);
+    assert.equal((report.match(/\*\*File:\*\* `\.env`/g) || []).length, 1);
+  });
+});
+
+test('security scan reports shell commands built from strings but ignores comments and non-secret .env keys', () => {
+  withTempDir((dir) => {
+    fs.writeFileSync(
+      path.join(dir, 'safe.js'),
+      [
+        "import { execFileSync } from 'node:child_process';",
+        '// Never call eval() here, and never pass shell: true to spawn.',
+        '/* new Function() is not allowed either. */',
+        "execFileSync('git', ['status'], { shell: false });",
+        'const pattern = /x/;',
+        'pattern.exec(input);',
+        ''
+      ].join('\n')
+    );
+    fs.writeFileSync(
+      path.join(dir, '.env'),
+      ['TOKEN_URL=https://example.com/oauth/token', 'JWT_TOKEN_TTL_SECONDS=86400000000', 'SECRET_FILE=/run/secrets/app', 'API_KEY=${VAULT_API_KEY}', ''].join('\n')
+    );
+    const clean = cli(['audit'], { cwd: dir });
+    assert.equal(clean.status, 0, clean.stdout);
+    assert.match(clean.stdout, /Security scan: no findings in 2 files/);
+
+    fs.writeFileSync(
+      path.join(dir, 'deploy.js'),
+      "const { exec } = require('child_process');\nexec(`git checkout ${branch}`);\n"
+    );
+    fs.writeFileSync(path.join(dir, 'auth.js'), `export const header = "Bearer ghp_${'a'.repeat(36)}";\n`);
+    const flagged = cli(['audit'], { cwd: dir });
+    assert.equal(flagged.status, 1);
+    const report = fs.readFileSync(path.join(dir, '.smileu', 'reports', 'SECURITY_AUDIT.md'), 'utf-8');
+    assert.match(report, /\[HIGH\] Shell command built from a string\n- \*\*File:\*\* `deploy\.js`/);
+    assert.match(report, /Potential Hardcoded Secret \(Bearer Token, GitHub Personal Token\)/);
+    assert.equal((report.match(/Potential Hardcoded Secret/g) || []).length, 1, 'overlapping patterns give one finding');
+    assert.doesNotMatch(report, /\*\*File:\*\* `(?:safe\.js|\.env)`/);
   });
 });
 

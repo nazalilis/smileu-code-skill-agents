@@ -10,6 +10,7 @@ import {
   plural
 } from './ui.js';
 import {
+  NPM_PACKAGE_NAME,
   PACKAGE_NAME,
   REPOSITORIES,
   SKILLS_CATALOG,
@@ -28,7 +29,7 @@ import { runFullPipeline } from './tools/pipeline.js';
 import { runGrillingSession } from './tools/grill.js';
 import { runSwarmDecomposition } from './tools/swarm.js';
 import { showMotionPresets } from './tools/motion.js';
-import { compareToLatest, fetchLatestRelease, readCliVersion, updateWorkspace } from './tools/update.js';
+import { checkForUpdate, compareToLatest, readCliVersion, updateWorkspace } from './tools/update.js';
 import { readManifest, writeManifest } from './utils/manifest.js';
 
 // Exit codes: 0 success, 1 the command ran but failed or found a blocking
@@ -50,6 +51,8 @@ function finish(code) {
 }
 
 export async function runCli(argv = process.argv.slice(2)) {
+  // -v / --version work anywhere on the command line, like --help. A quoted
+  // argument such as "fix the -v flag" is one token and does not match.
   if (argv.includes('--version') || argv.includes('-v')) {
     console.log(`smileu-code-skill version ${readCliVersion()}`);
     return finish(EXIT_OK);
@@ -514,21 +517,30 @@ async function runUpdate(args) {
   }
 
   const current = readCliVersion();
+  if (!current) {
+    logError(`Could not read this CLI's version from its package.json. Reinstall it with "npm install -g ${NPM_PACKAGE_NAME}".`);
+    return EXIT_FAILURE;
+  }
 
   if (opts.check) {
-    logInfo(`Checking GitHub for a newer release of ${PACKAGE_NAME}...`);
-    const latest = await fetchLatestRelease();
+    logInfo('Checking for a newer release...');
+    const latest = await checkForUpdate();
     if (!latest.ok) {
-      logWarn(`Could not check for updates. ${latest.reason}`);
+      logWarn(`Could not check for updates. ${latest.reasons.join(' ')}`);
       return EXIT_FAILURE;
     }
 
     const state = compareToLatest(current, latest.version);
     if (state === 'outdated') {
       logNotice(`Version ${latest.version} is available (you have ${current}).`);
-      console.log(`  Upgrade: npm install -g ${PACKAGE_NAME}@latest`);
-      console.log(`  Or run it once: npx ${PACKAGE_NAME}@latest update`);
-      if (latest.url) console.log(`  Release notes: ${latest.url}`);
+      // Only suggest the registry the newest version was actually found on.
+      if (latest.source === 'npm') {
+        console.log(`  Upgrade: npm install -g ${NPM_PACKAGE_NAME}@latest`);
+        console.log(`  Or run it once: npx ${NPM_PACKAGE_NAME}@latest update`);
+      } else {
+        console.log(`  Upgrade from GitHub Packages (needs npm login): npm install -g ${PACKAGE_NAME}@latest`);
+      }
+      if (latest.url) console.log(`  Details: ${latest.url}`);
     } else if (state === 'ahead') {
       logInfo(`This build (${current}) is newer than the latest release (${latest.version}).`);
     } else {
@@ -680,7 +692,7 @@ function printRepos() {
 
 function printHelp() {
   console.log(`Usage: smileu <command> [options]
-       npx ${PACKAGE_NAME} <command> [options]
+       npx ${NPM_PACKAGE_NAME} <command> [options]
 
 Install
   init [editor]          Install skills, agent personas and project templates (default command)
@@ -719,7 +731,7 @@ Update options
   -e, --editor <name>    Only update this editor's folders
   --latest               Update from the current library on GitHub
   --include-new          Also install library skills this project does not have yet
-  --check                Check GitHub for a newer release of this CLI (writes nothing)
+  --check                Check npm and GitHub for a newer release of this CLI (writes nothing)
   --dry-run              Show what would change without writing files
 
 Global options

@@ -8,7 +8,7 @@ A CLI that installs AI coding skills and agent personas into Claude Code, Cursor
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](package.json)
-[![Package](https://img.shields.io/badge/package-%40nazalilis%2Fsmileu--code--skill-blue.svg)](https://github.com/nazalilis/smileu-code-skill-agents/pkgs/npm/smileu-code-skill)
+[![npm](https://img.shields.io/npm/v/smileu-code-skill.svg)](https://www.npmjs.com/package/smileu-code-skill)
 [![Skills](https://img.shields.io/badge/skills-889-purple.svg)](skills/)
 [![Agents](https://img.shields.io/badge/agent%20personas-12-orange.svg)](templates/agents/)
 [![CI](https://github.com/nazalilis/smileu-code-skill-agents/actions/workflows/ci.yml/badge.svg)](https://github.com/nazalilis/smileu-code-skill-agents/actions/workflows/ci.yml)
@@ -47,15 +47,19 @@ Smileu packages 889 skills and 12 agent personas drawn from eight open-source pr
 
 ## Install
 
-The package is published to GitHub Packages as `@nazalilis/smileu-code-skill`. Pick one of the options below.
-
-#### Option 1: run straight from GitHub (no registry setup)
+#### Run without installing
 ```bash
-npx github:nazalilis/smileu-code-skill-agents init
+npx smileu-code-skill init
 ```
 
-#### Option 2: install from GitHub Packages
-GitHub Packages needs a one-time login, even for public packages. Create a personal access token with the `read:packages` scope, then:
+#### Install globally
+After a global install the command is `smileu`:
+```bash
+npm install -g smileu-code-skill
+```
+
+#### From GitHub Packages
+Each release is also published as `@nazalilis/smileu-code-skill` on GitHub Packages. GitHub Packages asks for a login even to install, so this route suits people who already have access to the repository. Create a personal access token with the `read:packages` scope, then:
 ```bash
 npm config set @nazalilis:registry https://npm.pkg.github.com
 ```
@@ -65,9 +69,8 @@ npm login --scope=@nazalilis --auth-type=legacy --registry=https://npm.pkg.githu
 ```bash
 npm install -g @nazalilis/smileu-code-skill
 ```
-After a global install the command is `smileu`. Without installing, use `npx @nazalilis/smileu-code-skill <command>`.
 
-#### Option 3: from a clone
+#### From a clone
 ```bash
 git clone https://github.com/nazalilis/smileu-code-skill-agents.git
 ```
@@ -75,7 +78,7 @@ git clone https://github.com/nazalilis/smileu-code-skill-agents.git
 cd smileu-code-skill-agents && npm install && npm link
 ```
 
-The examples below use `smileu`. Substitute the `npx` form if you did not install globally.
+The examples below use `smileu`. Without a global install, replace it with `npx smileu-code-skill`.
 
 ---
 
@@ -147,7 +150,7 @@ smileu update --dry-run
 ```
 
 #### Check whether a newer CLI release exists
-Asks the GitHub Releases API and prints the upgrade command. It writes nothing.
+Looks up the newest published version on npm, falling back to GitHub Releases, and prints the upgrade command. It writes nothing.
 ```bash
 smileu update --check
 ```
@@ -163,7 +166,7 @@ Each install and update records what it did in `.smileu/manifest.json`, which `u
 | `init [editor]` | Install skills, agent personas and project templates. The default command. | 1 if anything failed |
 | `add <skill...>` | Install skills by name. Names must match a library folder exactly. | 1 if a skill was not found |
 | `update` | Refresh installed skills and personas. See [Keeping skills up to date](#keeping-skills-up-to-date). | 1 if nothing is installed |
-| `audit` | Scan for hardcoded secrets (including `.env` files), `eval()`, `new Function()`, `shell: true`, and run `npm audit`. | 1 on critical or high findings |
+| `audit` | Scan for hardcoded secrets (including `.env` files), `eval()`, `new Function()`, shell commands built from strings or run with a `shell` option, and run `npm audit`. | 1 on critical or high findings |
 | `craft` | Flag pure `#000` black, `bounce`/`elastic` easing and nested `card` classes in UI files. | 0 (advisory) |
 | `humanize` | Flag 8 common AI phrases in Markdown files. | 0 (advisory) |
 | `graph` | Build a file and import graph with Graphify, or with the built-in import scanner when Graphify is not installed. | 0 |
@@ -316,7 +319,7 @@ smileu-code-skill-agents/
 
 Versions follow [Semantic Versioning](https://semver.org/), and every release has a section in [CHANGELOG.md](CHANGELOG.md) in [Keep a Changelog](https://keepachangelog.com/) format. Write entries under `## [Unreleased]` as you work; cutting a release moves them into a dated version section.
 
-Releasing never creates commits or pull requests on its own. The version bump is a commit you make; GitHub Actions only adds the `vX.Y.Z` tag, creates the GitHub Release with notes from the changelog, and publishes the package to GitHub Packages (and to npm when an `NPM_TOKEN` secret is configured).
+Releasing never creates commits or pull requests on its own. The version bump is a commit you make; GitHub Actions only adds the `vX.Y.Z` tag, creates the GitHub Release with notes from the changelog, and publishes the package: `@nazalilis/smileu-code-skill` to GitHub Packages, and `smileu-code-skill` to npm when an `NPM_TOKEN` secret is configured.
 
 #### 1. Choose the release type and cut it locally
 Preview first, then cut the release. The script runs the tests, bumps `package.json`, moves `[Unreleased]` into a dated section, commits and tags:
@@ -337,17 +340,27 @@ The push that changes the version in `package.json` (or the new `vX.Y.Z` tag) st
 #### 3. Retry or preview from GitHub
 **Actions → Release & Publish Package → Run workflow** releases the version already in `package.json`. Tick **dry run** to only see the plan.
 
-**What updates on its own**
+#### What happens automatically
 
 - Re-running a release is safe: an existing GitHub Release is updated in place, and a version that is already on the registry is skipped.
 - Prerelease versions (`1.2.0-rc.0`) are marked as pre-releases on GitHub and published with the `next` dist-tag, so `@latest` stays on the last stable version.
 - Users pick up new skills with `smileu update --latest --include-new` and new CLI versions with `smileu update --check`.
 
-**Repository settings the workflow relies on**
+#### One-time setup for publishing to npm
 
-- Under **Settings → Actions → General → Workflow permissions**, the organisation must allow workflows to request write access. The workflow asks for `contents: write` and `packages: write` itself.
+`npx smileu-code-skill` works only after the package is on the public npm registry. For that the workflow needs:
+
+1. An npm account at [npmjs.com](https://www.npmjs.com/).
+2. An npm access token that is allowed to publish new packages (npmjs.com, then **Access Tokens**, then **Generate New Token**).
+3. That token saved as a repository secret named `NPM_TOKEN` (**Settings → Secrets and variables → Actions → New repository secret**).
+
+Without `NPM_TOKEN`, the workflow still creates the GitHub Release and publishes to GitHub Packages, and the run summary says that npm was skipped. To publish under a different npm name, add a repository variable named `NPM_PACKAGE_NAME`.
+
+#### Repository settings
+
+- Under **Settings → Actions → General → Workflow permissions**, workflows must be allowed to request write access. The workflow asks for `contents: write` and `packages: write` itself.
 - The workflow never pushes commits, so branch protection on `main` does not get in its way. It only pushes the release tag.
-- `NPM_TOKEN` is optional. Without it, only GitHub Packages is published.
+- In a private repository, the GitHub Release and the GitHub Packages package are private as well. The npm package is public and contains the full source code.
 
 ---
 

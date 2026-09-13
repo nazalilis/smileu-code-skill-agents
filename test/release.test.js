@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import {
   bumpVersion,
   compareVersions,
   formatVersion,
   isPrerelease,
-  parseVersion
+  parseVersion,
+  RELEASE_TYPES
 } from '../src/utils/semver.js';
 import {
   extractNotes,
@@ -19,8 +21,10 @@ import {
   stampRelease
 } from '../scripts/lib/changelog.js';
 
-const RELEASE_SCRIPT = path.resolve('scripts/release.js');
-const NOTES_SCRIPT = path.resolve('scripts/release-notes.js');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const RELEASE_SCRIPT = path.join(ROOT, 'scripts', 'release.js');
+const NOTES_SCRIPT = path.join(ROOT, 'scripts', 'release-notes.js');
+const PROJECT_CHANGELOG = path.join(ROOT, 'CHANGELOG.md');
 
 const FIXTURE = [
   '# Changelog',
@@ -57,13 +61,18 @@ test('semver parses and formats versions, dropping build metadata', () => {
     build: 'build.5'
   });
   assert.equal(formatVersion(parseVersion('1.2.3-rc.1+build.5')), '1.2.3-rc.1');
+  for (const valid of ['0.0.0', '1.2.3-0', '1.2.3-rc.10', '1.2.3-x-y.7+build.001', ' 1.2.3 ']) {
+    assert.doesNotThrow(() => parseVersion(valid), `expected "${valid}" to be accepted`);
+  }
 });
 
-test('semver rejects malformed versions', () => {
-  for (const bad of ['1.2', 'v1.2.3', '1.2.3.4', '01.a.3', '', 'banana']) {
+test('semver rejects versions outside the spec grammar', () => {
+  const invalid = ['1.2', 'v1.2.3', '1.2.3.4', '01.2.3', '1.02.3', '1.2.3-01', '1.2.3-beta..1', '1.2.3-beta_1', '1.2.3-', '1.2.3+', '', 'banana'];
+  for (const bad of invalid) {
     assert.throws(() => parseVersion(bad), /Invalid semantic version/, `expected "${bad}" to be rejected`);
   }
   assert.throws(() => parseVersion(123), TypeError);
+  assert.throws(() => parseVersion(null), /received null/);
 });
 
 test('semver bumps stable versions for every release type', () => {
@@ -79,6 +88,7 @@ test('semver bumps stable versions for every release type', () => {
   for (const [type, expected] of cases) {
     assert.equal(bumpVersion('1.0.4', type), expected, `1.0.4 + ${type}`);
   }
+  assert.ok(Object.isFrozen(RELEASE_TYPES));
 });
 
 test('semver graduates a prerelease instead of skipping a version', () => {
@@ -97,11 +107,15 @@ test('semver increments prerelease counters and switches channels', () => {
   assert.equal(bumpVersion('1.0.4', 'prerelease', 'rc'), '1.0.5-rc.0');
 });
 
-test('semver accepts an explicit target version, with or without a v prefix', () => {
+test('semver accepts explicit versions and explains bad release types and identifiers', () => {
   assert.equal(bumpVersion('1.0.4', '2.5.0'), '2.5.0');
   assert.equal(bumpVersion('1.0.4', 'v3.0.0-rc.1'), '3.0.0-rc.1');
-  assert.throws(() => bumpVersion('1.0.4', 'banana'), /Invalid semantic version/);
+  assert.throws(() => bumpVersion('1.0.4', 'banana'), /Unknown release type or invalid version: "banana"/);
+  assert.throws(() => bumpVersion('1.0.4', 'Patch'), /Unknown release type or invalid version: "Patch"/);
+  assert.throws(() => bumpVersion('1.0.4', undefined), /Release type must be one of/);
   assert.throws(() => bumpVersion('1.0.4', 'prerelease', 'be ta'), /Invalid prerelease identifier/);
+  assert.throws(() => bumpVersion('1.0.4', 'prerelease', '01'), /Invalid prerelease identifier/);
+  assert.equal(bumpVersion('1.0.4', 'patch', 'be ta'), '1.0.5', 'preid only matters for pre* types');
 });
 
 test('semver orders versions per the spec, prereleases below their release', () => {
@@ -113,6 +127,7 @@ test('semver orders versions per the spec, prereleases below their release', () 
   assert.equal(compareVersions('1.0.0-beta', '1.0.0-beta.1'), -1);
   assert.equal(compareVersions('1.0.0-1', '1.0.0-alpha'), -1);
   assert.equal(compareVersions('2.0.0', '2.0.0'), 0);
+  assert.equal(compareVersions('1.0.0+a', '1.0.0+b'), 0, 'build metadata is ignored');
   assert.deepEqual(
     ['1.0.0', '1.0.0-rc.1', '0.9.9', '1.0.0-beta.2'].sort(compareVersions),
     ['0.9.9', '1.0.0-beta.2', '1.0.0-rc.1', '1.0.0']
@@ -142,10 +157,12 @@ test('changelog extracts notes without separators, accepting a v prefix', () => 
   assert.equal(extractNotes(FIXTURE, '9.9.9'), null);
 });
 
-test('changelog detects whether [Unreleased] has entries', () => {
+test('changelog detects whether [Unreleased] has real entries', () => {
   assert.equal(hasUnreleasedEntries(FIXTURE), true);
   assert.equal(hasUnreleasedEntries(EMPTY_UNRELEASED), false);
   assert.equal(hasUnreleasedEntries('# Changelog\n\n## [1.0.0] - 2026-01-01\n- x\n'), false);
+  assert.equal(hasUnreleasedEntries('## [Unreleased]\n\n### Added\n<!-- add entries -->\n\n---\n'), false);
+  assert.equal(hasUnreleasedEntries('## [unreleased]\n- something\n'), true);
 });
 
 test('changelog stamps [Unreleased] into a dated version section', () => {
@@ -178,8 +195,55 @@ test('changelog refuses to stamp an empty, missing or duplicate release', () => 
   assert.throws(() => stampRelease(FIXTURE, '1.0.0', STAMP_DATE), /already contains a section for 1\.0\.0/);
 });
 
+test('changelog stamping validates the version and the date, and handles an empty preamble', () => {
+  const text = '## [Unreleased]\n- b\n';
+  const stamped = stampRelease(text, '2.0.0', '2026-09-13');
+  assert.equal(stamped, '## [Unreleased]\n\n---\n\n## [2.0.0] - 2026-09-13\n\n- b\n');
+
+  assert.throws(() => stampRelease(text, 'not-a-version', '2026-09-13'), /Invalid semantic version/);
+  assert.throws(() => stampRelease(text, '', '2026-09-13'), /Invalid semantic version/);
+  assert.throws(() => stampRelease(text, '2.0.0', '13/09/2026'), /must be YYYY-MM-DD/);
+  assert.throws(() => stampRelease(text, '2.0.0', new Date('garbage')), /not a valid date/);
+});
+
+test('changelog stamping keeps sections above [Unreleased] and footer links at the end', () => {
+  const text = ['# C', '', '## [1.0.0] - 2026-01-01', '- a', '', '## [Unreleased]', '- b', '', '[1.0.0]: https://example.com/v1.0.0', ''].join('\n');
+  const stamped = stampRelease(text, '1.1.0', '2026-09-13');
+
+  assert.deepEqual(parseChangelog(stamped).sections.map((s) => s.version), ['Unreleased', '1.1.0', '1.0.0']);
+  assert.equal(extractNotes(stamped, '1.0.0'), '- a');
+  assert.equal(extractNotes(stamped, '1.1.0'), '- b', 'footer links are not part of the release notes');
+  assert.match(stamped, /\n\[1\.0\.0\]: https:\/\/example\.com\/v1\.0\.0\n$/);
+});
+
+test('changelog keeps indentation and blank lines inside notes', () => {
+  const text = '## [Unreleased]\n\n    indented code\n\n```\na\n\n\n\nb\n```\n';
+  const stamped = stampRelease(text, '1.0.0', '2026-09-13');
+  assert.equal(extractNotes(stamped, '1.0.0'), '    indented code\n\n```\na\n\n\n\nb\n```');
+});
+
+test('changelog leaves placeholder comments out of release notes', () => {
+  const text = '## [Unreleased]\n\n- a\n\n<!-- add entries above this line -->\n';
+  const stamped = stampRelease(text, '1.0.0', '2026-09-13');
+  assert.equal(extractNotes(stamped, '1.0.0'), '- a');
+});
+
+test('changelog understands yanked releases and lowercase [unreleased]', () => {
+  const yanked = '# C\n\n## [Unreleased]\n\n## [1.0.1] - 2026-02-01 [YANKED]\n- broken build\n\n## [1.0.0] - 2026-01-01\n- first\n';
+  assert.deepEqual(
+    parseChangelog(yanked).sections.map((s) => [s.version, s.yanked]),
+    [
+      ['Unreleased', false],
+      ['1.0.1', true],
+      ['1.0.0', false]
+    ]
+  );
+  assert.equal(extractNotes(yanked, '1.0.1'), '- broken build');
+  assert.equal(latestReleasedVersion('## [unreleased]\n- x\n\n## [1.2.0] - 2026-01-01\n- y\n'), '1.2.0');
+});
+
 test('the project CHANGELOG.md parses and has at least one released version', () => {
-  const text = fs.readFileSync(path.resolve('CHANGELOG.md'), 'utf-8');
+  const text = fs.readFileSync(PROJECT_CHANGELOG, 'utf-8');
   const latest = latestReleasedVersion(text);
   assert.ok(latest, 'CHANGELOG.md should contain a released version section');
   assert.doesNotThrow(() => parseVersion(latest));
@@ -200,7 +264,7 @@ test('release script prints help and rejects invalid input without touching git'
     { encoding: 'utf-8' }
   );
   assert.equal(badType.status, 1);
-  assert.match(badType.stderr, /Release aborted: Invalid semantic version: "banana"/);
+  assert.match(badType.stderr, /Release aborted: Unknown release type or invalid version: "banana"/);
 
   const badFlag = spawnSync(process.execPath, [RELEASE_SCRIPT, '--frobnicate'], { encoding: 'utf-8' });
   assert.equal(badFlag.status, 1);
@@ -208,7 +272,7 @@ test('release script prints help and rejects invalid input without touching git'
 });
 
 test('release notes script prints a section and fails cleanly for unknown versions', () => {
-  const text = fs.readFileSync(path.resolve('CHANGELOG.md'), 'utf-8');
+  const text = fs.readFileSync(PROJECT_CHANGELOG, 'utf-8');
   const latest = latestReleasedVersion(text);
 
   const found = spawnSync(process.execPath, [NOTES_SCRIPT, latest], { encoding: 'utf-8' });

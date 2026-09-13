@@ -21,19 +21,61 @@ export const SECRET_PATTERNS = [
   { name: 'Slack Webhook', regex: /https:\/\/hooks\.slack\.com\/services\/T[a-zA-Z0-9_]+\/B[a-zA-Z0-9_]+\/[a-zA-Z0-9_]+/i }
 ];
 
-// Unquoted KEY=value assignments. Checked only in dotenv-style files, where that
-// syntax is normal; in source code it would flag ordinary variable names.
-// Values that reference another variable ($VAR, ${VAR}) are not secrets.
-const ENV_ASSIGNMENT = {
-  name: 'Secret in environment file',
-  regex: /^[ \t]*(?:export[ \t]+)?[a-z0-9_]*(?:api_?key|secret|token|passw(?:or)?d)[a-z0-9_]*[ \t]*=[ \t]*['"]?(?!\$)[^\s'"#]{12,}/im
-};
+// Names of .env keys that usually hold secrets, and suffixes that mark a key as
+// configuration about a secret (where to find it, how long it lives) instead.
+const SECRET_KEY = /(?:API_?KEY|SECRET|TOKEN|PASSW(?:OR)?D)/i;
+const NON_SECRET_SUFFIX = /_(?:URL|URI|ENDPOINT|HOST|PORT|PATH|FILE|DIR|NAME|TYPE|HEADER|TTL|SECONDS|MS|EXPIRES|EXPIRY|LENGTH)$/i;
+const ENV_LINE = /^[ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*(.*)$/;
 
-// Code execution vectors (OWASP A03: Injection).
+/**
+ * True when a dotenv-style file assigns what looks like a real secret value to
+ * a secret-sounding key. Values that reference another variable ($VAR, ${VAR})
+ * and short placeholder values are ignored.
+ */
+function envFileHasSecret(content) {
+  return content.split(/\r?\n/).some((line) => {
+    const match = ENV_LINE.exec(line);
+    if (!match) return false;
+    const [, key, rawValue] = match;
+    if (!SECRET_KEY.test(key) || NON_SECRET_SUFFIX.test(key)) return false;
+
+    const value = rawValue
+      .replace(/[ \t]+#.*$/, '')
+      .trim()
+      .replace(/^(['"])(.*)\1$/, '$2');
+    return value.length >= 12 && !value.startsWith('$') && !/\s/.test(value);
+  });
+}
+
+/**
+ * Drops lines that are comments (// ..., /* ..., * ...), so a call mentioned in
+ * a comment or doc block is not reported as a call.
+ */
+function withoutCommentLines(content) {
+  return content
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(?:\/\/|\/\*|\*)/.test(line))
+    .join('\n');
+}
+
+// Code execution vectors (OWASP A03: Injection). Each check runs on the file
+// with comment lines removed.
 export const DANGEROUS_CALLS = [
-  { name: 'eval() Execution', regex: /\beval\s*\(/ },
-  { name: 'Unsafe shell spawn', regex: /child_process.*(?:exec|spawn).*shell\s*:\s*true/i },
-  { name: 'Unsafe Function constructor', regex: /new\s+Function\s*\(/ }
+  { name: 'eval() Execution', test: (code) => /\beval\s*\(/.test(code) },
+  { name: 'Unsafe Function constructor', test: (code) => /\bnew\s+Function\s*\(/.test(code) },
+  {
+    // A child process call whose options set `shell` to anything but false,
+    // including the `{ shell }` shorthand, even when the options span lines.
+    name: 'Unsafe shell spawn',
+    test: (code) =>
+      /\b(?:exec|execSync|execFile|execFileSync|spawn|spawnSync)\s*\([^;]{0,400}?\bshell\s*(?::\s*(?!false\b)[\w'"`]|[,}])/.test(code)
+  },
+  {
+    // exec/execSync always go through a shell, so a command assembled from a
+    // template string or concatenation is an injection point.
+    name: 'Shell command built from a string',
+    test: (code) => /\b(?:exec|execSync)\s*\(\s*(?:`[^`]*\$\{|['"][^'"\n]*['"]\s*\+)/.test(code)
+  }
 ];
 
 // Dependencies, build output and installed skill libraries. Every other
@@ -53,8 +95,12 @@ const EXAMPLE_FILES = /\.(example|sample|template|dist)$/i;
 const EXEMPT_SEGMENTS = new Set(['test', 'tests', '__tests__', '__mocks__', 'fixtures']);
 const SELF_PATH = fileURLToPath(import.meta.url);
 
-function isExempt(fullPath, relPath) {
-  return path.resolve(fullPath) === SELF_PATH || relPath.split('/').some((seg) => EXEMPT_SEGMENTS.has(seg));
+function isExempt(fullPath, relPath, content) {
+  if (path.resolve(fullPath) === SELF_PATH) return true;
+  // Another copy of this scanner (for example a project that vendors this
+  // package) describes every pattern it looks for; do not report it.
+  if (content.includes('export const SECRET_PATTERNS') && content.includes('export const DANGEROUS_CALLS')) return true;
+  return relPath.split('/').some((seg) => EXEMPT_SEGMENTS.has(seg));
 }
 
 /**
@@ -129,31 +175,27 @@ export function runSecurityAudit(targetDir = process.cwd()) {
       return;
     }
     scannedCount += 1;
-    if (isExempt(fullPath, relPath)) return;
+    if (isExempt(fullPath, relPath, content)) return;
 
-    for (const pattern of SECRET_PATTERNS) {
-      if (pattern.regex.test(content)) {
-        report(
-          'CRITICAL',
-          relPath,
-          `Potential Hardcoded Secret (${pattern.name})`,
-          'Move the value into an environment variable, keep .env files out of git, and rotate the credential if it was ever committed.'
-        );
-      }
+    // One finding per file lists every credential pattern that matched, so a
+    // value that fits several patterns is not reported several times.
+    const matched = SECRET_PATTERNS.filter((pattern) => pattern.regex.test(content)).map((pattern) => pattern.name);
+    if (!matched.length && ENV_FILES.test(name) && !EXAMPLE_FILES.test(name) && envFileHasSecret(content)) {
+      matched.push('Secret in environment file');
     }
-
-    if (ENV_FILES.test(name) && !EXAMPLE_FILES.test(name) && ENV_ASSIGNMENT.regex.test(content)) {
+    if (matched.length) {
       report(
         'CRITICAL',
         relPath,
-        `Potential Hardcoded Secret (${ENV_ASSIGNMENT.name})`,
-        'Make sure this file is listed in .gitignore and was never committed. Commit a .env.example with placeholder values instead.'
+        `Potential Hardcoded Secret (${matched.join(', ')})`,
+        'Move the value into an environment variable, keep .env files out of git, and rotate the credential if it was ever committed.'
       );
     }
 
     if (CODE_FILES.test(name)) {
+      const code = withoutCommentLines(content);
       for (const danger of DANGEROUS_CALLS) {
-        if (danger.regex.test(content)) {
+        if (danger.test(code)) {
           report(
             'HIGH',
             relPath,
@@ -216,7 +258,7 @@ export function runSecurityAudit(targetDir = process.cwd()) {
 
 ${
   findings.length === 0
-    ? `No findings. Checked ${scannedCount} files for ${SECRET_PATTERNS.length} secret patterns and ${DANGEROUS_CALLS.length} dangerous calls.`
+    ? `No findings. Checked ${scannedCount} files for ${SECRET_PATTERNS.length} secret patterns and ${DANGEROUS_CALLS.length} kinds of dangerous calls.`
     : findings
         .map(
           (f, idx) => `### ${idx + 1}. [${f.severity}] ${f.issue}
@@ -230,8 +272,8 @@ ${
 ---
 
 ## Checks run
-- **Secrets:** ${SECRET_PATTERNS.length} credential patterns in code, config, \`.env\` and \`.npmrc\` files, plus unquoted \`KEY=value\` secrets in \`.env\` files
-- **Dangerous calls:** \`eval()\`, \`new Function()\`, and \`child_process\` with \`shell: true\`
+- **Secrets:** ${SECRET_PATTERNS.length} credential patterns in code, config, \`.env\` and \`.npmrc\` files, plus unquoted secret values in \`.env\` files
+- **Dangerous calls:** \`eval()\`, \`new Function()\`, child process calls with a \`shell\` option, and \`exec\`/\`execSync\` commands built from template strings or concatenation (comment lines are ignored)
 - **Dependencies:** \`npm audit\` when a \`package.json\` is present
 
 Test and fixture folders are exempt from these checks. This is a pattern scan, not a full OWASP Top 10 review.

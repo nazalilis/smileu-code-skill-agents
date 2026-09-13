@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`--latest`** installs from a temporary clone of the GitHub repository, then
   deletes it. Falls back to the bundled library when git or the network is unavailable.
 - **Master skill always included**, so the `/smileu` workflow works after any install.
+- **`npx smileu-code-skill`.** Releases are also published to the public npm registry
+  under the unscoped name `smileu-code-skill` when the `NPM_TOKEN` secret is set, so the
+  CLI runs without any registry setup. GitHub Packages keeps
+  `@nazalilis/smileu-code-skill`. GitHub Release notes include the install command.
 
 ### Changed
 - **Exit codes:** 0 success, 1 failure or blocking finding, 2 invalid usage. Before,
@@ -62,9 +66,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project root on purpose.
 - **Scan reports** state exactly which checks ran and no longer claim full OWASP Top 10
   coverage.
-- **Documentation:** README, ARCHITECTURE and SECURITY describe the actual behaviour.
-  Install instructions use the published package name `@nazalilis/smileu-code-skill`
-  (the unscoped `smileu-code-skill` name does not belong to this project).
+- **Documentation:** README, ARCHITECTURE and SECURITY describe the actual behaviour,
+  including how to install from npm or from GitHub Packages.
+- **`update --check`** reads the npm registry first and falls back to GitHub Releases,
+  so it also works when the repository is private.
+- **Workflow actions** are pinned to full commit SHAs.
+- **Version parsing** follows the semver grammar strictly: leading zeros and empty
+  identifiers are rejected, and a mistyped release type gets its own error message.
+- **Tests** run their sandboxes in the OS temp directory and remove the reports they
+  create, so a test run leaves nothing behind in the repository.
 
 ### Fixed
 - Running the CLI with no arguments crashed, and a flags-only call such as
@@ -96,6 +106,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and checked there.
 - `scripts/release.js` produced `NaN` versions for prereleases, treated unknown types
   as `patch`, and left a bumped `package.json` behind when git failed.
+- Stamping the changelog dropped release sections placed above `[Unreleased]`, collapsed
+  blank lines inside notes, ignored `[YANKED]` releases and lowercase `[unreleased]`,
+  and accepted invalid versions and dates.
+- The security scan missed a `shell` option written on a different line from the call
+  and shell commands built from template strings, flagged `eval()` mentioned only in
+  comments, reported one secret several times when patterns overlapped, and treated
+  `.env` keys such as `TOKEN_URL` as secrets.
+- The release workflow could not publish to npm (the token line was appended to the
+  last line of the generated `.npmrc`), could not be retried once the tag existed,
+  exposed the npm token to every step, and left git credentials in the checkout.
+- The design scan flagged `class="card card-body"` as a nested card and missed nested
+  cards written with `className`. It now also ignores self-closing tags, void elements
+  such as `<img>`, and Vue `:class` bindings.
 
 ---
 

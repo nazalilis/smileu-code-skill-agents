@@ -21,7 +21,13 @@ const DESIGN_CHECKS = [
   {
     id: 'nested_cards',
     name: 'Nested Card Container Pattern',
-    regex: /class=["'][^"']*\bcard\b[^"']*\bcard\b[^"']*["']/i,
+    // An element with the class token "card" whose first child element also has
+    // the token "card". Tokens like "card-body" or "card-title" do not count.
+    // Static class= (HTML, Vue, Svelte) and className= (JSX) attributes are read;
+    // bound expressions such as Vue's :class="{ card: ok }", Svelte's class:card
+    // directive, self-closing tags and void elements like <img> are ignored. A
+    // card nested deeper than the first child is not detected.
+    regex: /<(?!(?:area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)\b)[a-z][\w.-]*\b[^>]*?(?<![:\w-])class(?:Name)?=["'][^"']*(?<![\w-])card(?![\w-])[^"']*["'][^>]*(?<!\/)>\s*<[a-z][\w.-]*\b[^>]*(?<![:\w-])class(?:Name)?=["'][^"']*(?<![\w-])card(?![\w-])/i,
     advice: 'Avoid nesting cards inside cards. Use whitespace, 1px divider lines, or a light background tint.'
   }
 ];

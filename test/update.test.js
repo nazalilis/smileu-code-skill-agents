@@ -1,19 +1,64 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import {
+  checkForUpdate,
   compareToLatest,
   detectInstalledSkills,
+  fetchLatestNpmVersion,
   fetchLatestRelease,
   updateWorkspace
 } from '../src/tools/update.js';
 import { manifestPath, readManifest, writeManifest } from '../src/utils/manifest.js';
 
+// Removes a folder without following symlinks or junctions inside it, so a link
+// that points outside the temp folder can never cause files there to be deleted.
+function removeTree(target) {
+  let stat;
+  try {
+    stat = fs.lstatSync(target);
+  } catch {
+    return;
+  }
+
+  if (stat.isSymbolicLink()) {
+    try {
+      fs.unlinkSync(target);
+    } catch {
+      fs.rmdirSync(target);
+    }
+    return;
+  }
+
+  if (stat.isDirectory()) {
+    for (const entry of fs.readdirSync(target)) removeTree(path.join(target, entry));
+    fs.rmdirSync(target);
+    return;
+  }
+
+  fs.unlinkSync(target);
+}
+
+// Every temp folder created here is removed when the file finishes. Each folder
+// is removed on its own, so one failure cannot leave the others behind.
+const createdDirs = [];
+after(() => {
+  for (const dir of createdDirs) {
+    try {
+      removeTree(dir);
+    } catch (err) {
+      console.error(`could not remove temp folder ${dir}: ${err.code || err.message}`);
+    }
+  }
+});
+
 function tempDir(prefix = 'smileu-unit-') {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  createdDirs.push(dir);
+  return dir;
 }
 
 function writeFile(file, content) {
@@ -84,6 +129,104 @@ test('fetchLatestRelease turns every failure into a readable reason instead of t
   const noFetch = await fetchLatestRelease({ fetchImpl: null });
   assert.equal(noFetch.ok, false);
   assert.match(noFetch.reason, /no fetch API/);
+});
+
+// --- npm registry and checkForUpdate -----------------------------------------
+
+test('fetchLatestNpmVersion reads the latest dist-tag and encodes scoped names', async () => {
+  let requested;
+  const result = await fetchLatestNpmVersion({
+    fetchImpl: async (url) => {
+      requested = url;
+      return fakeResponse(200, { version: '1.1.0' });
+    }
+  });
+  assert.deepEqual(result, { ok: true, version: '1.1.0', url: 'https://www.npmjs.com/package/smileu-code-skill' });
+  assert.equal(requested, 'https://registry.npmjs.org/smileu-code-skill/latest');
+
+  const scoped = await fetchLatestNpmVersion({
+    name: '@nazalilis/smileu-code-skill',
+    fetchImpl: async (url) => {
+      requested = url;
+      return fakeResponse(404, {});
+    }
+  });
+  assert.equal(requested, 'https://registry.npmjs.org/@nazalilis%2Fsmileu-code-skill/latest');
+  assert.equal(scoped.ok, false);
+  assert.match(scoped.reason, /not published on the npm registry yet/);
+
+  const badVersion = await fetchLatestNpmVersion({ fetchImpl: async () => fakeResponse(200, { version: 'latest' }) });
+  assert.match(badVersion.reason, /"latest", which is not a version/);
+
+  const timeout = await fetchLatestNpmVersion({
+    fetchImpl: async () => {
+      throw Object.assign(new Error('aborted'), { name: 'TimeoutError' });
+    }
+  });
+  assert.match(timeout.reason, /npm registry did not answer within 5s/);
+});
+
+test('checkForUpdate reports the higher of npm and GitHub, and cleans text that came from the server', async () => {
+  const staleNpm = await checkForUpdate({
+    fetchImpl: async (url) =>
+      url.includes('registry.npmjs.org')
+        ? fakeResponse(200, { version: '1.1.0' })
+        : fakeResponse(200, { tag_name: 'v1.2.0', html_url: 'https://github.com/nazalilis/smileu-code-skill-agents/releases/tag/v1.2.0' })
+  });
+  assert.equal(staleNpm.source, 'github');
+  assert.equal(staleNpm.version, '1.2.0');
+
+  const tie = await checkForUpdate({
+    fetchImpl: async (url) =>
+      url.includes('registry.npmjs.org') ? fakeResponse(200, { version: '1.2.0' }) : fakeResponse(200, { tag_name: 'v1.2.0' })
+  });
+  assert.equal(tie.source, 'npm', 'npm wins a tie because installing from it needs no login');
+
+  const hostile = await fetchLatestRelease({
+    fetchImpl: async () => fakeResponse(200, { tag_name: 'v9\u001b[2J', html_url: 'https://evil.example/phish' })
+  });
+  assert.equal(hostile.ok, false);
+  assert.doesNotMatch(hostile.reason, /[\u0000-\u001f\u007f-\u009f]/);
+
+  const offsiteLink = await fetchLatestRelease({
+    fetchImpl: async () => fakeResponse(200, { tag_name: 'v1.0.0', html_url: 'https://evil.example/phish' })
+  });
+  assert.equal(offsiteLink.ok, true);
+  assert.equal(offsiteLink.url, null, 'only github.com release links are shown');
+
+  const slowBody = await fetchLatestNpmVersion({
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw Object.assign(new Error('aborted'), { name: 'TimeoutError' });
+      }
+    })
+  });
+  assert.match(slowBody.reason, /did not finish answering within 5s/);
+});
+
+test('checkForUpdate prefers npm, falls back to GitHub, and reports both reasons when neither answers', async () => {
+  const fromNpm = await checkForUpdate({
+    fetchImpl: async (url) => (url.includes('registry.npmjs.org') ? fakeResponse(200, { version: '2.0.0' }) : fakeResponse(500, {}))
+  });
+  assert.equal(fromNpm.ok, true);
+  assert.equal(fromNpm.source, 'npm');
+  assert.equal(fromNpm.version, '2.0.0');
+
+  const fromGithub = await checkForUpdate({
+    fetchImpl: async (url) =>
+      url.includes('registry.npmjs.org') ? fakeResponse(404, {}) : fakeResponse(200, { tag_name: 'v1.9.0', html_url: 'https://github.com/x' })
+  });
+  assert.equal(fromGithub.ok, true);
+  assert.equal(fromGithub.source, 'github');
+  assert.equal(fromGithub.version, '1.9.0');
+
+  const neither = await checkForUpdate({ fetchImpl: async () => fakeResponse(404, {}) });
+  assert.equal(neither.ok, false);
+  assert.equal(neither.reasons.length, 2);
+  assert.match(neither.reasons[0], /npm registry/);
+  assert.match(neither.reasons[1], /No published release/);
 });
 
 test('compareToLatest classifies the running version against the latest release', () => {
