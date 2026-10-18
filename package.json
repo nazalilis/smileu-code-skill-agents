@@ -1,71 +1,38 @@
 {
-  "name": "@nazalilis/smileu-code-skill-agents",
-  "version": "1.2.0",
-  "description": "Install AI coding skills, agent personas and a /smileu command into Claude Code, Cursor, Windsurf and Antigravity, and run local security, design and prose checks.",
+  "name": "code-skill-agents",
+  "version": "1.0.0",
+  "description": "Production CLI installer to orchestrate 13 AI agent harnesses, personas, skills, and security tools with real-time latest version synchronization",
   "type": "module",
-  "main": "src/index.js",
+  "main": "./src/registry.mjs",
   "bin": {
-    "smileu": "bin/cli.js",
-    "smileu-code-skill": "bin/cli.js"
+    "code-skill-agents": "./bin/cli.mjs",
+    "smileu-code-skill-agents": "./bin/cli.mjs",
+    "create-code-skill-agents": "./bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node ./bin/cli.mjs"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nazalilis/smileu-code-skill-agents.git"
   },
-  "homepage": "https://github.com/nazalilis/smileu-code-skill-agents#readme",
   "bugs": {
     "url": "https://github.com/nazalilis/smileu-code-skill-agents/issues"
   },
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://npm.pkg.github.com"
+  "homepage": "https://github.com/nazalilis/smileu-code-skill-agents#readme",
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "execa": "^9.0.0",
+    "fs-extra": "^11.2.0",
+    "giget": "^1.2.3",
+    "picocolors": "^1.0.0"
   },
-  "scripts": {
-    "start": "node bin/cli.js",
-    "test": "node --test test/cli.test.js test/sandboxes.test.js test/release.test.js test/update.test.js",
-    "test:unit": "node --test test/cli.test.js test/release.test.js test/update.test.js",
-    "test:sandboxes": "node --test test/sandboxes.test.js",
-    "release": "node scripts/release.js patch",
-    "release:minor": "node scripts/release.js minor",
-    "release:major": "node scripts/release.js major",
-    "test:release": "node --test test/release.test.js",
-    "release:pre": "node scripts/release.js prerelease",
-    "release:dry": "node scripts/release.js --dry-run --skip-tests",
-    "release:notes": "node scripts/release-notes.js"
-  },
-  "keywords": [
-    "smileu",
-    "smileu-code-skill",
-    "agent-skills",
-    "skills",
-    "subagents",
-    "claude-code",
-    "cursor",
-    "windsurf",
-    "antigravity",
-    "ai-agents",
-    "design-taste",
-    "cybersecurity"
-  ],
-  "author": "Smileu Code Skill",
-  "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
-  },
-  "dependencies": {
-    "picocolors": "^1.1.1",
-    "prompts": "^2.4.2"
-  },
-  "files": [
-    "bin",
-    "src",
-    "skills",
-    "templates",
-    "docs",
-    "SECURITY.md",
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md",
-    "assets"
-  ]
+  }
 }
